@@ -1,0 +1,1232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Conway Net</title>
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #1c1f26;
+    --border: #2c313c;
+    --text: #e6e8ec;
+    --muted: #8b93a3;
+    --alive: #4fd67a;
+    --alive-hover: #6fe396;
+    --dead: #23262d;
+    --dead-hover: #2c2f38;
+    --accent: #5b8cff;
+    --accent-hover: #7aa0ff;
+    --warn: #ff6b6b;
+    --zero: #f2a93b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 20px;
+  }
+  .controls label { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .controls input[type=number] {
+    width: 52px;
+    background: var(--dead);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 4px 6px;
+    font-size: 13px;
+  }
+  .controls select {
+    background: var(--dead);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 4px 6px;
+    font-size: 13px;
+  }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 7px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  button:hover { background: var(--accent-hover); }
+  button.secondary { background: var(--dead); color: var(--text); border: 1px solid var(--border); }
+  button.secondary:hover { background: var(--dead-hover); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .spacer { flex: 1; }
+
+  .board {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .seed-section {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 800px) {
+    .columns { grid-template-columns: 1fr; }
+  }
+  .col {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .col-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .col-title { font-size: 14px; font-weight: 600; }
+  .col-desc { font-size: 12px; color: var(--muted); margin: 0 0 12px; }
+  .epoch-badge {
+    font-size: 12px;
+    color: var(--muted);
+    background: var(--dead);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 2px 10px;
+  }
+  .status { font-size: 12px; color: var(--warn); margin-top: 8px; min-height: 16px; }
+
+  .grid-wrap { display: flex; justify-content: center; margin: 10px 0; }
+  .cellgrid {
+    display: grid;
+    gap: 2px;
+    background: var(--border);
+    padding: 2px;
+    border-radius: 4px;
+  }
+  .cell {
+    width: 26px;
+    height: 26px;
+    background: var(--dead);
+    border-radius: 2px;
+    cursor: default;
+  }
+  .cell.alive { background: var(--alive); }
+  .seed-cell { cursor: pointer; }
+  .seed-cell:hover { background: var(--dead-hover); }
+  .seed-cell.alive:hover { background: var(--alive-hover); }
+
+  .inspectable { cursor: pointer; }
+  .inspectable:hover { outline: 2px solid var(--accent-hover); outline-offset: -2px; }
+  .cell.selected { outline: 3px solid var(--accent); outline-offset: -3px; }
+  .cell.center-cell { box-shadow: inset 0 0 0 3px var(--zero); }
+  .cell.offgrid {
+    background-image: repeating-linear-gradient(45deg, var(--dead) 0 3px, var(--border) 3px 6px);
+  }
+  .cell.patch-region { outline: 2px solid var(--zero); outline-offset: -2px; }
+
+  .mini-grids { display: flex; gap: 16px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
+  .mini-grid-block { text-align: center; }
+  .mini-grid-block .label { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .mini-cell { width: 14px; height: 14px; }
+
+  .toggle-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-top: 10px; }
+
+  .inspector { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 14px; }
+  .inspector-empty { font-size: 12px; color: var(--muted); }
+  .inspector-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+  .inspector-body { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; }
+  .inspector-legend { font-size: 11px; color: var(--muted); margin-top: 8px; display: flex; align-items: center; gap: 6px; }
+  .legend-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; }
+  .inspector-facts { display: flex; flex-direction: column; gap: 8px; font-size: 12px; color: var(--muted); min-width: 200px; }
+  .fact-row { display: flex; align-items: center; gap: 8px; }
+  .fact-badge {
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid var(--border);
+    background: var(--dead);
+    color: var(--muted);
+  }
+  .fact-badge.on { background: rgba(79, 214, 122, 0.15); color: var(--alive); border-color: var(--alive); }
+
+  .diagram-block { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+
+  .full-network-panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    margin-top: 20px;
+  }
+
+  .graph-node { cursor: pointer; }
+  svg.tracing .graph-node,
+  svg.tracing .graph-edge { opacity: 0.05 !important; }
+  svg.tracing .graph-node.graph-highlight { opacity: 1 !important; }
+  svg.tracing .graph-edge.graph-highlight { opacity: 0.95 !important; }
+  svg.tracing .graph-node.graph-origin {
+    stroke: var(--accent) !important;
+    stroke-width: 2.5px !important;
+  }
+
+  .full-grid-block { margin-top: 12px; }
+  .full-grid-block .label { font-size: 11px; color: var(--muted); margin-bottom: 8px; text-align: center; }
+  .diagram-block .label { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+  #networkDiagram svg { display: block; margin: 0 auto; }
+  #networkDiagram text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+
+  .matrix-block { margin-top: 12px; }
+  .matrix-block .label { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
+  .matrix-row { display: flex; gap: 26px; flex-wrap: wrap; margin-bottom: 18px; align-items: flex-start; }
+  .matrix-table-wrap { overflow-x: auto; }
+  .matrix-title { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+  table.matrix {
+    border-collapse: collapse;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+  }
+  table.matrix th, table.matrix td {
+    border: 1px solid var(--border);
+    padding: 3px 7px;
+    text-align: center;
+    color: var(--muted);
+  }
+  table.matrix th { color: var(--text); font-weight: 600; background: var(--dead); }
+  table.matrix td.bias-col, table.matrix th.bias-col { border-left: 2px solid var(--zero); }
+  table.matrix tr.row-active td, table.matrix tr.row-active th.row-label {
+    background: rgba(79, 214, 122, 0.12);
+    color: var(--alive);
+  }
+  table.matrix td.pos, table.matrix td.neg { color: var(--text); }
+  table.matrix td.pos { color: var(--alive); }
+  table.matrix td.neg { color: var(--warn); }
+  .matrix-vector { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+  .matrix-vector strong { color: var(--text); }
+  .diagram-empty { font-size: 12px; color: var(--muted); text-align: center; padding: 20px; }
+  .diagram-legend { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; font-size: 11px; color: var(--muted); margin-top: 8px; }
+  .diagram-legend span { display: flex; align-items: center; gap: 5px; }
+  .legend-line { display: inline-block; width: 16px; height: 3px; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<h1>Conway Net</h1>
+<p class="subtitle">Draw a starting state, then step the neural network (served live from network.py by server.py) and a true Game of Life implementation side by side.</p>
+
+<div class="controls">
+  <label>Rows <input type="number" id="rowsInput" min="3" max="10" value="5"></label>
+  <label>Cols <input type="number" id="colsInput" min="3" max="10" value="5"></label>
+  <button class="secondary" id="resizeBtn">New Grid</button>
+  <button class="secondary" id="randomBtn">Randomize</button>
+  <button class="secondary" id="clearBtn">Clear</button>
+  <label>Epochs per step <input type="number" id="epochsInput" min="1" max="1000" value="1"></label>
+  <label>Engine <select id="engineSelect">
+    <option value="cell">ConwayNet (per-cell)</option>
+    <option value="matrix">FullGridNet (flat matrix)</option>
+  </select></label>
+  <div class="spacer"></div>
+  <button id="startBtn">Start / Reset Simulations</button>
+  <button id="stepBtn">Step &#9654;</button>
+</div>
+
+<div class="board">
+  <div class="seed-section">
+    <div class="col-header">
+      <span class="col-title">Seed state</span>
+      <span class="epoch-badge" id="seedDims">5 x 5</span>
+    </div>
+    <p class="col-desc">Click cells to toggle alive/dead, then press "Start / Reset Simulations".</p>
+    <div class="grid-wrap"><div class="cellgrid" id="seedGrid"></div></div>
+  </div>
+
+  <div class="columns">
+    <div class="col">
+      <div class="col-header">
+        <span class="col-title">Neural network output</span>
+        <span class="epoch-badge" id="nnEpochBadge">epoch 0</span>
+      </div>
+      <p class="col-desc">A hand-built neural network (no libraries) that exactly reproduces Conway's Game of Life. Computed live by the real Python network, not a copy. Click any cell below to see the neurons and weights behind its value.</p>
+      <div class="grid-wrap"><div class="cellgrid" id="nnGrid"></div></div>
+      <div class="status" id="nnStatus"></div>
+      <label class="toggle-row"><input type="checkbox" id="showInternals"> show layer 2 &amp; layer 3</label>
+      <div class="mini-grids" id="internals" style="display:none;">
+        <div class="mini-grid-block">
+          <div class="label">2.1 (&ge;2 neighbors)</div>
+          <div class="cellgrid" id="l2n1Grid"></div>
+        </div>
+        <div class="mini-grid-block">
+          <div class="label">2.2 (&ge;3 neighbors)</div>
+          <div class="cellgrid" id="l2n2Grid"></div>
+        </div>
+        <div class="mini-grid-block">
+          <div class="label">2.3 (&ge;4 neighbors)</div>
+          <div class="cellgrid" id="l2n3Grid"></div>
+        </div>
+        <div class="mini-grid-block">
+          <div class="label">2.4 (center off)</div>
+          <div class="cellgrid" id="l2n4Grid"></div>
+        </div>
+        <div class="mini-grid-block">
+          <div class="label">3.1 (overpop.)</div>
+          <div class="cellgrid" id="l3n1Grid"></div>
+        </div>
+        <div class="mini-grid-block">
+          <div class="label">3.2 (birth)</div>
+          <div class="cellgrid" id="l3n2Grid"></div>
+        </div>
+        <div class="mini-grid-block">
+          <div class="label">3.3 (continuation)</div>
+          <div class="cellgrid" id="l3n3Grid"></div>
+        </div>
+      </div>
+
+      <div class="inspector">
+        <div class="inspector-empty" id="inspectorEmpty">Step the network at least once, then click any cell above (output grid or layer 2/3 maps) to see the 3x3 input patch and every neuron's value for it.</div>
+        <div class="inspector-content" id="inspectorContent" style="display:none;">
+          <div class="inspector-title" id="inspectorTitle"></div>
+          <div class="inspector-body">
+            <div class="mini-grid-block">
+              <div class="label">3x3 patch (includes center)</div>
+              <div class="cellgrid" id="patchGrid"></div>
+              <div class="inspector-legend"><span class="legend-swatch" style="background:var(--zero)"></span>center: weight 0 for 2.1/2.2/2.3, sole input for 2.4</div>
+              <div class="inspector-legend"><span class="legend-swatch" style="background:var(--border)"></span>off-grid, counted as off</div>
+            </div>
+            <div class="inspector-facts" id="inspectorFacts"></div>
+          </div>
+
+          <label class="toggle-row"><input type="checkbox" id="showFullGrid"> show full input grid for this epoch</label>
+          <div class="full-grid-block" id="fullGridBlock" style="display:none;">
+            <div class="label">full input grid that fed this step &mdash; the ringed region is the 3x3 patch above</div>
+            <div class="grid-wrap"><div class="cellgrid" id="fullGridDisplay"></div></div>
+          </div>
+
+          <div class="diagram-block">
+            <div class="label">network graph for this cell &mdash; line thickness = |weight|, green = positive, red = negative, dashed = weight 0. Brighter lines/nodes are actually active for this cell's input.</div>
+            <div id="networkDiagram"></div>
+          </div>
+
+          <label class="toggle-row"><input type="checkbox" id="showMatrices"> show weight matrices</label>
+          <div class="matrix-block" id="matrixBlock" style="display:none;">
+            <div class="label">W1, W2, W3 &mdash; the real matrices behind the diagram above. The highlighted row in each is this cell's actual vector; green = firing.</div>
+            <div id="matrixView"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="col-header">
+        <span class="col-title">Game of Life (reference)</span>
+        <span class="epoch-badge" id="golEpochBadge">epoch 0</span>
+      </div>
+      <p class="col-desc">The classic rule, for comparison: a live cell survives with 2 or 3 neighbors; a dead cell is born with exactly 3.</p>
+      <div class="grid-wrap"><div class="cellgrid" id="golGrid"></div></div>
+      <div class="status" id="golStatus"></div>
+    </div>
+  </div>
+</div>
+
+<div class="full-network-panel">
+  <div class="col-header">
+    <span class="col-title">FullGridNet (network graph)</span>
+    <span class="epoch-badge" id="fullNetEpochBadge">epoch 0</span>
+  </div>
+  <p class="col-desc">Every real neuron in the flat-matrix engine, one straight vertical line per layer, every real nonzero-weight edge between them &mdash; no per-cell selection needed. Shown regardless of which engine you picked above; the data is identical either way.</p>
+  <div id="fullNetworkGraph"><div class="diagram-empty">Step the network at least once to see the graph.</div></div>
+</div>
+
+<script>
+const MIN_DIM = 3, MAX_DIM = 10;
+
+function makeGrid(rows, cols, fill) {
+  const g = [];
+  for (let i = 0; i < rows; i++) g.push(new Array(cols).fill(fill));
+  return g;
+}
+function cloneGrid(g) { return g.map(r => r.slice()); }
+
+// --- Neural network: calls the real ConwayNet in network.py via server.py,
+// so there is exactly one implementation of the network, not a JS copy of it.
+async function nnStep(grid, epochs) {
+  const engine = document.getElementById('engineSelect').value;
+  const res = await fetch('/api/step', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ grid, epochs: epochs || 1, engine }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `server error (${res.status})`);
+  return {
+    layer2: data.layer2, // { n1, n2, n3, n4 } each a rows x cols 0/1 grid
+    layer3: data.layer3, // { n1, n2, n3 }
+    output: data.output,
+    priorGrid: data.priorGrid, // the grid that fed the FINAL of the N epochs
+    epochs: data.epochs,
+    engine: data.engine,
+  };
+}
+
+function getEpochsN() {
+  return clamp(parseInt(document.getElementById('epochsInput').value, 10) || 1, 1, 1000);
+}
+
+// The network's real weights/biases (network.py's describe_network()),
+// fetched once so the diagram draws the actual graph, not a guessed one.
+let networkSpec = null;
+async function loadNetworkSpec() {
+  try {
+    const res = await fetch('/api/network');
+    networkSpec = await res.json();
+  } catch (e) {
+    networkSpec = null;
+  }
+}
+
+// --- True Conway's Game of Life ---
+function golStep(grid) {
+  const rows = grid.length, cols = grid[0].length;
+  const next = makeGrid(rows, cols, 0);
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      let n = 0;
+      for (let di = -1; di <= 1; di++) {
+        for (let dj = -1; dj <= 1; dj++) {
+          if (di === 0 && dj === 0) continue;
+          const ni = i + di, nj = j + dj;
+          if (ni >= 0 && ni < rows && nj >= 0 && nj < cols) n += grid[ni][nj];
+        }
+      }
+      const alive = grid[i][j];
+      next[i][j] = alive ? (n === 2 || n === 3 ? 1 : 0) : (n === 3 ? 1 : 0);
+    }
+  }
+  return next;
+}
+
+// --- State ---
+let seed = makeGrid(5, 5, 0);
+let nnState = null, nnEpoch = 0;
+let golState = null, golEpoch = 0;
+let lastNnInternals = null;
+let lastNnInput = null;
+let selectedCell = null; // { i, j } into the nn output grid
+
+// --- Rendering ---
+function renderCellGrid(container, grid, opts) {
+  opts = opts || {};
+  const rows = grid.length, cols = grid[0].length;
+  container.style.gridTemplateColumns = `repeat(${cols}, ${opts.size || 26}px)`;
+  container.innerHTML = '';
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      const cell = document.createElement('div');
+      const isSelected = opts.selected && opts.selected.i === i && opts.selected.j === j;
+      const isHighlighted = opts.highlightPred && opts.highlightPred(i, j);
+      cell.className = 'cell'
+        + (grid[i][j] ? ' alive' : '')
+        + (opts.editable ? ' seed-cell' : '')
+        + (opts.onClick ? ' inspectable' : '')
+        + (isSelected ? ' selected' : '')
+        + (isHighlighted ? ' patch-region' : '');
+      if (opts.size) { cell.style.width = opts.size + 'px'; cell.style.height = opts.size + 'px'; }
+      if (opts.editable) {
+        cell.addEventListener('click', () => {
+          grid[i][j] = grid[i][j] ? 0 : 1;
+          renderSeed();
+        });
+      }
+      if (opts.onClick) {
+        cell.addEventListener('click', () => opts.onClick(i, j));
+      }
+      container.appendChild(cell);
+    }
+  }
+}
+
+function renderPatchGrid(container, inputGrid, ci, cj) {
+  const rows = inputGrid.length, cols = inputGrid[0].length;
+  container.style.gridTemplateColumns = `repeat(3, 30px)`;
+  container.innerHTML = '';
+  for (let di = -1; di <= 1; di++) {
+    for (let dj = -1; dj <= 1; dj++) {
+      const ni = ci + di, nj = cj + dj;
+      const inBounds = ni >= 0 && ni < rows && nj >= 0 && nj < cols;
+      const value = inBounds ? inputGrid[ni][nj] : 0;
+      const isCenter = di === 0 && dj === 0;
+      const cell = document.createElement('div');
+      cell.className = 'cell'
+        + (value ? ' alive' : '')
+        + (isCenter ? ' center-cell' : '')
+        + (!inBounds ? ' offgrid' : '');
+      cell.style.width = '30px';
+      cell.style.height = '30px';
+      container.appendChild(cell);
+    }
+  }
+}
+
+function selectNnCell(i, j) {
+  selectedCell = { i, j };
+  renderNN();
+}
+
+function renderInspector() {
+  const emptyEl = document.getElementById('inspectorEmpty');
+  const contentEl = document.getElementById('inspectorContent');
+  if (!selectedCell || !lastNnInput || !lastNnInternals || !nnState) {
+    emptyEl.style.display = 'block';
+    contentEl.style.display = 'none';
+    return;
+  }
+  const { i, j } = selectedCell;
+  emptyEl.style.display = 'none';
+  contentEl.style.display = 'block';
+  document.getElementById('inspectorTitle').textContent = `Cell (row ${i}, col ${j}) at epoch ${nnEpoch}`;
+  renderPatchGrid(document.getElementById('patchGrid'), lastNnInput, i, j);
+
+  const fullGridBlock = document.getElementById('fullGridBlock');
+  if (document.getElementById('showFullGrid').checked) {
+    fullGridBlock.style.display = 'block';
+    renderCellGrid(document.getElementById('fullGridDisplay'), lastNnInput, {
+      size: 18,
+      highlightPred: (ri, ci) => Math.abs(ri - i) <= 1 && Math.abs(ci - j) <= 1,
+    });
+  } else {
+    fullGridBlock.style.display = 'none';
+  }
+
+  const rows = lastNnInput.length, cols = lastNnInput[0].length;
+  let sum = 0;
+  for (let di = -1; di <= 1; di++) {
+    for (let dj = -1; dj <= 1; dj++) {
+      if (di === 0 && dj === 0) continue;
+      const ni = i + di, nj = j + dj;
+      if (ni >= 0 && ni < rows && nj >= 0 && nj < cols) sum += lastNnInput[ni][nj];
+    }
+  }
+
+  const n21 = lastNnInternals.layer2.n1[i][j];
+  const n22 = lastNnInternals.layer2.n2[i][j];
+  const n23 = lastNnInternals.layer2.n3[i][j];
+  const n24 = lastNnInternals.layer2.n4[i][j];
+  const n31 = lastNnInternals.layer3.n1[i][j];
+  const n32 = lastNnInternals.layer3.n2[i][j];
+  const n33 = lastNnInternals.layer3.n3[i][j];
+  const out = nnState[i][j];
+  const centerOff = lastNnInput[i][j] === 0;
+
+  const badge = (v, label) => `<span class="fact-badge${v ? ' on' : ''}">${label || (v ? 'FIRING' : 'off')}</span>`;
+
+  document.getElementById('inspectorFacts').innerHTML = `
+    <div class="fact-row">active neighbors in patch: <strong style="color:var(--text)">${sum} / 8</strong>, center is ${centerOff ? 'off' : 'on'}</div>
+    <div class="fact-row">2.1 fires if &ge;2 neighbors: ${badge(n21)}</div>
+    <div class="fact-row">2.2 fires if &ge;3 neighbors: ${badge(n22)}</div>
+    <div class="fact-row">2.3 fires if &ge;4 neighbors: ${badge(n23)}</div>
+    <div class="fact-row">2.4 fires if center is off: ${badge(n24)}</div>
+    <div class="fact-row">3.1 (overpopulation) = 2.3: ${badge(n31)}</div>
+    <div class="fact-row">3.2 (birth) = 2.4 &amp; 2.2 &amp; NOT 2.3: ${badge(n32)}</div>
+    <div class="fact-row">3.3 (continuation) = 2.1 &amp; NOT 2.4: ${badge(n33)}</div>
+    <div class="fact-row">output = NOT 3.1 AND (3.2 OR 3.3): ${badge(out)}</div>
+  `;
+
+  renderNetworkDiagram(i, j);
+  renderMatrixView(i, j);
+}
+
+// --- Network diagram: draws the actual weighted graph (from networkSpec,
+// fetched from /api/network) for the currently selected cell. ---
+function weightStyle(w) {
+  const width = w === 0 ? 1 : Math.min(7, 1.5 + Math.abs(w) * 2);
+  const color = w > 0 ? 'var(--alive)' : (w < 0 ? 'var(--warn)' : 'var(--muted)');
+  const dash = w === 0 ? ' stroke-dasharray="3,3"' : '';
+  return { width, color, dash };
+}
+
+function edgeLine(x1, y1, x2, y2, weight, active, opts) {
+  opts = opts || {};
+  const { width, color, dash } = weightStyle(weight);
+  const opacity = active ? 0.9 : 0.12;
+  const cls = opts.cls ? ` class="${opts.cls}"` : '';
+  const dataAttrs = (opts.src && opts.dst) ? ` data-src="${opts.src}" data-dst="${opts.dst}"` : '';
+  return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${width}" opacity="${opacity}"${dash}${cls}${dataAttrs}><title>weight ${weight}</title></line>`;
+}
+
+function nodeCircle(cx, cy, r, active, title, opts) {
+  opts = opts || {};
+  const fill = active ? 'var(--alive)' : 'var(--dead)';
+  let stroke = 'var(--border)', strokeWidth = 1.5, dash = '';
+  if (opts.center) { stroke = 'var(--zero)'; strokeWidth = 2.5; }
+  if (opts.offgrid) { dash = ' stroke-dasharray="2,2"'; }
+  const cls = opts.cls ? ` class="${opts.cls}"` : '';
+  const dataKey = opts.key ? ` data-key="${opts.key}"` : '';
+  return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"${dash}${cls}${dataKey}><title>${title}: ${active ? 'on / firing' : 'off'}</title></circle>`;
+}
+
+function textLabel(x, y, text, size, anchor) {
+  return `<text x="${x}" y="${y}" font-size="${size || 10}" fill="var(--muted)" text-anchor="${anchor || 'start'}">${text}</text>`;
+}
+
+// Builds the single-transition block (input patch -> layer2 -> layer3 ->
+// output) at horizontal offset `originX`, using real values from `step`
+// (an { input, layer2, layer3, output } object).
+function buildDiagramBlock(originX, step, i, j) {
+  const rows = step.input.length, cols = step.input[0].length;
+  const patch = [], patchInBounds = [];
+  for (let di = -1; di <= 1; di++) {
+    for (let dj = -1; dj <= 1; dj++) {
+      const ni = i + di, nj = j + dj;
+      const inb = ni >= 0 && ni < rows && nj >= 0 && nj < cols;
+      patch.push(inb ? step.input[ni][nj] : 0);
+      patchInBounds.push(inb);
+    }
+  }
+
+  const l2 = [step.layer2.n1[i][j], step.layer2.n2[i][j], step.layer2.n3[i][j], step.layer2.n4[i][j]];
+  const l3 = [step.layer3.n1[i][j], step.layer3.n2[i][j], step.layer3.n3[i][j]];
+  const out = step.output[i][j];
+
+  const inputPos = [];
+  for (let di = -1; di <= 1; di++)
+    for (let dj = -1; dj <= 1; dj++)
+      inputPos.push({ x: originX + 40 + (dj + 1) * 34, y: 72 + (di + 1) * 34 });
+
+  const l2Pos = [0, 1, 2, 3].map(k => ({ x: originX + 250, y: 40 + k * 44 }));
+  const l3Pos = [0, 1, 2].map(k => ({ x: originX + 410, y: 63 + k * 43 }));
+  const outPos = { x: originX + 540, y: 106 };
+
+  const l2Labels = ['2.1', '2.2', '2.3', '2.4'];
+  const l2Titles = ['2.1: fires if >=2 neighbors', '2.2: fires if >=3 neighbors', '2.3: fires if >=4 neighbors', '2.4: fires if center is off'];
+  const l3Labels = ['3.1', '3.2', '3.3'];
+  const l3Titles = ['3.1 overpopulation: fires if 2.3', '3.2 birth: fires if 2.4 & 2.2 & not 2.3', '3.3 continuation: fires if 2.1 & not 2.4'];
+
+  const l2Specs = [networkSpec.layer2.n1, networkSpec.layer2.n2, networkSpec.layer2.n3, networkSpec.layer2.n4];
+  const l3Specs = [networkSpec.layer3.n1, networkSpec.layer3.n2, networkSpec.layer3.n3];
+  const outSpec = networkSpec.output;
+
+  let edges = '';
+  l2Pos.forEach((p2, k) => {
+    const w = l2Specs[k].weights;
+    inputPos.forEach((p1, idx) => { edges += edgeLine(p1.x, p1.y, p2.x, p2.y, w[idx], patch[idx] === 1); });
+  });
+  l3Pos.forEach((p3, k) => {
+    const w = l3Specs[k].weights;
+    l2Pos.forEach((p2, idx) => { edges += edgeLine(p2.x, p2.y, p3.x, p3.y, w[idx], l2[idx] === 1); });
+  });
+  l3Pos.forEach((p3, idx) => { edges += edgeLine(p3.x, p3.y, outPos.x, outPos.y, outSpec.weights[idx], l3[idx] === 1); });
+
+  let nodes = '';
+  inputPos.forEach((p, idx) => {
+    nodes += nodeCircle(p.x, p.y, 9, patch[idx] === 1, 'input pixel', { center: idx === 4, offgrid: !patchInBounds[idx] });
+  });
+  l2Pos.forEach((p, k) => {
+    nodes += nodeCircle(p.x, p.y, 11, l2[k] === 1, l2Titles[k]);
+    nodes += textLabel(p.x + 17, p.y + 4, l2Labels[k]);
+  });
+  l3Pos.forEach((p, k) => {
+    nodes += nodeCircle(p.x, p.y, 11, l3[k] === 1, l3Titles[k]);
+    nodes += textLabel(p.x + 17, p.y + 4, l3Labels[k]);
+  });
+  nodes += nodeCircle(outPos.x, outPos.y, 12, out === 1, 'output: NOT 3.1 AND (3.2 OR 3.3)');
+  nodes += textLabel(outPos.x + 18, outPos.y + 4, 'output');
+
+  const headers = textLabel(originX + 74, 20, 'input patch', 10, 'middle')
+    + textLabel(originX + 250, 20, 'layer 2', 10, 'middle')
+    + textLabel(originX + 410, 20, 'layer 3', 10, 'middle')
+    + textLabel(originX + 540, 20, 'output', 10, 'middle');
+
+  return { edges, nodes, headers };
+}
+
+function renderNetworkDiagram(i, j) {
+  const container = document.getElementById('networkDiagram');
+  if (!networkSpec) {
+    container.innerHTML = '<div class="diagram-empty">Loading network weights&hellip;</div>';
+    return;
+  }
+
+  const step = { input: lastNnInput, layer2: lastNnInternals.layer2, layer3: lastNnInternals.layer3, output: nnState };
+  const block = buildDiagramBlock(0, step, i, j);
+
+  container.innerHTML = `
+    <svg viewBox="0 0 630 200" width="100%" style="max-width:640px; height:auto;">
+      ${block.headers}
+      ${block.edges}
+      ${block.nodes}
+    </svg>
+    <div class="diagram-legend">
+      <span><span class="legend-line" style="background:var(--alive)"></span>positive weight</span>
+      <span><span class="legend-line" style="background:var(--warn)"></span>negative weight</span>
+      <span><span class="legend-line" style="background:var(--muted); opacity:0.5"></span>zero weight (dashed)</span>
+    </div>
+  `;
+}
+
+// Real W1/W2/W3 matrices (from networkSpec) as tables, with the selected
+// cell's actual input vector and per-row firing state highlighted -- the
+// same underlying data as the dots-and-edges diagram above, shown as
+// literal numbers instead.
+function renderMatrixView(i, j) {
+  const block = document.getElementById('matrixBlock');
+  if (!document.getElementById('showMatrices').checked) {
+    block.style.display = 'none';
+    return;
+  }
+  block.style.display = 'block';
+  const container = document.getElementById('matrixView');
+  if (!networkSpec) {
+    container.innerHTML = '<div class="diagram-empty">Loading network weights&hellip;</div>';
+    return;
+  }
+
+  const rows = lastNnInput.length, cols = lastNnInput[0].length;
+  const patch = [];
+  const offsetLabels = [];
+  for (let di = -1; di <= 1; di++) {
+    for (let dj = -1; dj <= 1; dj++) {
+      const ni = i + di, nj = j + dj;
+      const inb = ni >= 0 && ni < rows && nj >= 0 && nj < cols;
+      patch.push(inb ? lastNnInput[ni][nj] : 0);
+      offsetLabels.push(`(${di},${dj})`);
+    }
+  }
+
+  const l2 = [
+    lastNnInternals.layer2.n1[i][j],
+    lastNnInternals.layer2.n2[i][j],
+    lastNnInternals.layer2.n3[i][j],
+    lastNnInternals.layer2.n4[i][j],
+  ];
+  const l3 = [
+    lastNnInternals.layer3.n1[i][j],
+    lastNnInternals.layer3.n2[i][j],
+    lastNnInternals.layer3.n3[i][j],
+  ];
+  const out = nnState[i][j];
+
+  function matrixTable(title, rowLabels, colLabels, weightRows, biases, activeFlags) {
+    let html = `<div class="matrix-title">${title}</div><div class="matrix-table-wrap"><table class="matrix"><thead><tr><th></th>`;
+    colLabels.forEach(c => { html += `<th>${c}</th>`; });
+    html += `<th class="bias-col">bias</th></tr></thead><tbody>`;
+    rowLabels.forEach((r, idx) => {
+      const active = activeFlags[idx] === 1;
+      html += `<tr class="${active ? 'row-active' : ''}"><th class="row-label">${r}</th>`;
+      weightRows[idx].forEach(w => {
+        const cls = w > 0 ? 'pos' : (w < 0 ? 'neg' : '');
+        html += `<td class="${cls}">${w}</td>`;
+      });
+      html += `<td class="bias-col">${biases[idx]}</td></tr>`;
+    });
+    html += `</tbody></table></div>`;
+    return html;
+  }
+
+  const w1Rows = [networkSpec.layer2.n1.weights, networkSpec.layer2.n2.weights, networkSpec.layer2.n3.weights, networkSpec.layer2.n4.weights];
+  const w1Bias = [networkSpec.layer2.n1.bias, networkSpec.layer2.n2.bias, networkSpec.layer2.n3.bias, networkSpec.layer2.n4.bias];
+  const w2Rows = [networkSpec.layer3.n1.weights, networkSpec.layer3.n2.weights, networkSpec.layer3.n3.weights];
+  const w2Bias = [networkSpec.layer3.n1.bias, networkSpec.layer3.n2.bias, networkSpec.layer3.n3.bias];
+  const w3Rows = [networkSpec.output.weights];
+  const w3Bias = [networkSpec.output.bias];
+
+  container.innerHTML = `
+    <div class="matrix-vector"><strong>x</strong> for (row ${i}, col ${j}) = [${patch.join(', ')}] &mdash; this cell's 3x3 patch, row-major, index 4 = center</div>
+    <div class="matrix-row">${matrixTable('W1 &mdash; input (9) &rarr; layer 2 (4)', ['2.1', '2.2', '2.3', '2.4'], offsetLabels, w1Rows, w1Bias, l2)}</div>
+    <div class="matrix-row">${matrixTable('W2 &mdash; layer 2 (4) &rarr; layer 3 (3)', ['3.1', '3.2', '3.3'], ['2.1', '2.2', '2.3', '2.4'], w2Rows, w2Bias, l3)}</div>
+    <div class="matrix-row">${matrixTable('W3 &mdash; layer 3 (3) &rarr; output (1)', ['output'], ['3.1', '3.2', '3.3'], w3Rows, w3Bias, [out])}</div>
+  `;
+}
+
+function renderSeed() {
+  document.getElementById('seedDims').textContent = `${seed.length} x ${seed[0].length}`;
+  renderCellGrid(document.getElementById('seedGrid'), seed, { editable: true });
+}
+
+function renderNN() {
+  const badge = document.getElementById('nnEpochBadge');
+  const statusEl = document.getElementById('nnStatus');
+  const engineLabel = lastNnInternals && lastNnInternals.engine ? ` · ${lastNnInternals.engine}` : '';
+  badge.textContent = `epoch ${nnEpoch}` + (nnState ? ` (${nnState.length} x ${nnState[0].length})${engineLabel}` : '');
+  if (!nnState) {
+    document.getElementById('nnGrid').innerHTML = '';
+    statusEl.textContent = 'Press "Start / Reset Simulations" to begin.';
+    document.getElementById('stepBtn').disabled = true;
+    document.getElementById('internals').style.display = 'none';
+    renderInspector();
+    renderFullNetworkGraph();
+    return;
+  }
+  renderCellGrid(document.getElementById('nnGrid'), nnState, { onClick: selectNnCell, selected: selectedCell });
+  document.getElementById('stepBtn').disabled = false;
+  statusEl.textContent = '';
+
+  if (document.getElementById('showInternals').checked) {
+    document.getElementById('internals').style.display = 'flex';
+    const l2Ids = ['l2n1Grid', 'l2n2Grid', 'l2n3Grid', 'l2n4Grid'];
+    const l2Keys = ['n1', 'n2', 'n3', 'n4'];
+    const l3Ids = ['l3n1Grid', 'l3n2Grid', 'l3n3Grid'];
+    const l3Keys = ['n1', 'n2', 'n3'];
+    if (lastNnInternals) {
+      l2Ids.forEach((id, k) => {
+        renderCellGrid(document.getElementById(id), lastNnInternals.layer2[l2Keys[k]], { size: 14, onClick: selectNnCell, selected: selectedCell });
+      });
+      l3Ids.forEach((id, k) => {
+        renderCellGrid(document.getElementById(id), lastNnInternals.layer3[l3Keys[k]], { size: 14, onClick: selectNnCell, selected: selectedCell });
+      });
+    } else {
+      l2Ids.concat(l3Ids).forEach(id => { document.getElementById(id).innerHTML = ''; });
+    }
+  } else {
+    document.getElementById('internals').style.display = 'none';
+  }
+
+  renderInspector();
+  renderFullNetworkGraph();
+}
+
+// The FullGridNet as a literal node/edge graph: every real neuron in every
+// layer arranged as ONE straight vertical line per layer (columns side by
+// side, classic layered-NN look), every real nonzero-weight connection
+// between them, at true scale, wrapped in a scroll container. Nothing
+// summarized -- for a 10x10 grid this is ~900 nodes and ~3000 edges.
+// Node/edge brightness comes from the actual current grid data.
+function renderFullNetworkGraph() {
+  const container = document.getElementById('fullNetworkGraph');
+  if (!networkSpec || !nnState || !lastNnInternals || !lastNnInput) {
+    container.innerHTML = '<div class="diagram-empty">Step the network at least once to see the graph.</div>';
+    return;
+  }
+
+  const rows = lastNnInput.length, cols = lastNnInput[0].length;
+  const n = rows * cols;
+  const S = 24;       // vertical spacing between neurons in a line
+  const R = 7;         // node radius (bigger = easier to click)
+  const BAND_GAP = 40;  // gap left for a label between sub-groups within a layer
+  // Horizontal gap between layer columns, stretched to fill the panel's
+  // actual width (4 columns, margins X1=50 + trailing 160, 3 gaps between).
+  const panelWidth = (container.parentElement ? container.parentElement.clientWidth : 1200) - 32;
+  const COL_GAP = Math.max(220, (panelWidth - 50 - 160) / 3);
+  const TOP = 56;       // room for the column header
+
+  // Lays out `count` nodes as one vertical line at x, returns {positions, nextY}.
+  function verticalLine(x, startY, count) {
+    const pos = [];
+    for (let p = 0; p < count; p++) pos.push({ x, y: startY + p * S });
+    return { pos, endY: startY + count * S };
+  }
+
+  // A layer made of one or more same-size sub-groups (e.g. 2.1..2.4),
+  // stacked in one continuous line with a labeled gap between each. Layers
+  // with fewer nodes are vertically centered against the tallest layer
+  // (contentHeight vs maxContentHeight), not all top-aligned.
+  function columnHeight(groupCount) {
+    return groupCount * n * S + (groupCount - 1) * BAND_GAP;
+  }
+  const maxContentHeight = Math.max(columnHeight(1), columnHeight(4), columnHeight(3), columnHeight(1));
+
+  function layerColumn(x, subLabels) {
+    const contentHeight = columnHeight(subLabels.length);
+    let y = TOP + 20 + (maxContentHeight - contentHeight) / 2;
+    const groups = [];
+    const labelYs = [];
+    subLabels.forEach(() => {
+      labelYs.push(y - 10);
+      const { pos, endY } = verticalLine(x, y, n);
+      groups.push(pos);
+      y = endY + BAND_GAP;
+    });
+    return { groups, labelYs, endY: y - BAND_GAP };
+  }
+
+  const X1 = 50, X2 = X1 + COL_GAP, X3 = X2 + COL_GAP, X4 = X3 + COL_GAP;
+  const L1 = layerColumn(X1, ['input']);
+  const L2 = layerColumn(X2, ['2.1', '2.2', '2.3', '2.4']);
+  const L3 = layerColumn(X3, ['3.1', '3.2', '3.3']);
+  const L4 = layerColumn(X4, ['output']);
+
+  // index p (0..n-1) -> (i,j)
+  const toIJ = p => [Math.floor(p / cols), p % cols];
+  const keyL1 = p => `l1:${p}`;
+  const keyL2 = (k, p) => `l2:${k}:${p}`;
+  const keyL3 = (k, p) => `l3:${k}:${p}`;
+  const keyL4 = p => `l4:${p}`;
+
+  const l2Values = [lastNnInternals.layer2.n1, lastNnInternals.layer2.n2, lastNnInternals.layer2.n3, lastNnInternals.layer2.n4];
+  const l3Values = [lastNnInternals.layer3.n1, lastNnInternals.layer3.n2, lastNnInternals.layer3.n3];
+  const l2Specs = [networkSpec.layer2.n1, networkSpec.layer2.n2, networkSpec.layer2.n3, networkSpec.layer2.n4];
+  const l3Specs = [networkSpec.layer3.n1, networkSpec.layer3.n2, networkSpec.layer3.n3];
+  const outSpec = networkSpec.output;
+  const NEIGHBOR_OFFSETS = [];
+  for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) NEIGHBOR_OFFSETS.push([di, dj]);
+
+  let edges = '';
+  // Layer 1 -> Layer 2
+  for (let k = 0; k < 4; k++) {
+    const w = l2Specs[k].weights;
+    for (let p = 0; p < n; p++) {
+      const [i, j] = toIJ(p);
+      const target = L2.groups[k][p];
+      NEIGHBOR_OFFSETS.forEach(([di, dj], idx) => {
+        if (w[idx] === 0) return;
+        const ni = i + di, nj = j + dj;
+        if (ni < 0 || ni >= rows || nj < 0 || nj >= cols) return;
+        const srcP = ni * cols + nj;
+        edges += edgeLine(L1.groups[0][srcP].x, L1.groups[0][srcP].y, target.x, target.y, w[idx], lastNnInput[ni][nj] === 1,
+          { cls: 'graph-edge', src: keyL1(srcP), dst: keyL2(k, p) });
+      });
+    }
+  }
+  // Layer 2 -> Layer 3
+  for (let k = 0; k < 3; k++) {
+    const w = l3Specs[k].weights;
+    for (let p = 0; p < n; p++) {
+      const [i, j] = toIJ(p);
+      const target = L3.groups[k][p];
+      w.forEach((wv, srcIdx) => {
+        if (wv === 0) return;
+        const src = L2.groups[srcIdx][p];
+        edges += edgeLine(src.x, src.y, target.x, target.y, wv, l2Values[srcIdx][i][j] === 1,
+          { cls: 'graph-edge', src: keyL2(srcIdx, p), dst: keyL3(k, p) });
+      });
+    }
+  }
+  // Layer 3 -> output
+  for (let p = 0; p < n; p++) {
+    const [i, j] = toIJ(p);
+    const target = L4.groups[0][p];
+    outSpec.weights.forEach((wv, srcIdx) => {
+      if (wv === 0) return;
+      const src = L3.groups[srcIdx][p];
+      edges += edgeLine(src.x, src.y, target.x, target.y, wv, l3Values[srcIdx][i][j] === 1,
+        { cls: 'graph-edge', src: keyL3(srcIdx, p), dst: keyL4(p) });
+    });
+  }
+
+  let nodes = '';
+  for (let p = 0; p < n; p++) {
+    const [i, j] = toIJ(p);
+    nodes += nodeCircle(L1.groups[0][p].x, L1.groups[0][p].y, R, lastNnInput[i][j] === 1, `input (${i},${j})`,
+      { cls: 'graph-node', key: keyL1(p) });
+  }
+  const l2Labels = ['2.1', '2.2', '2.3', '2.4'];
+  for (let k = 0; k < 4; k++) {
+    for (let p = 0; p < n; p++) {
+      const [i, j] = toIJ(p);
+      nodes += nodeCircle(L2.groups[k][p].x, L2.groups[k][p].y, R, l2Values[k][i][j] === 1, `${l2Labels[k]} (${i},${j})`,
+        { cls: 'graph-node', key: keyL2(k, p) });
+    }
+  }
+  const l3Labels = ['3.1', '3.2', '3.3'];
+  for (let k = 0; k < 3; k++) {
+    for (let p = 0; p < n; p++) {
+      const [i, j] = toIJ(p);
+      nodes += nodeCircle(L3.groups[k][p].x, L3.groups[k][p].y, R, l3Values[k][i][j] === 1, `${l3Labels[k]} (${i},${j})`,
+        { cls: 'graph-node', key: keyL3(k, p) });
+    }
+  }
+  for (let p = 0; p < n; p++) {
+    const [i, j] = toIJ(p);
+    nodes += nodeCircle(L4.groups[0][p].x, L4.groups[0][p].y, R, nnState[i][j] === 1, `output (${i},${j})`,
+      { cls: 'graph-node', key: keyL4(p) });
+  }
+
+  let headers = textLabel(X1, 20, `Layer 1 — input (${n})`, 12, 'middle')
+    + textLabel(X2, 20, `Layer 2 (${n * 4})`, 12, 'middle')
+    + textLabel(X3, 20, `Layer 3 (${n * 3})`, 12, 'middle')
+    + textLabel(X4, 20, `Layer 4 — output (${n})`, 12, 'middle');
+
+  let subLabels = '';
+  L2.labelYs.forEach((y, k) => { subLabels += textLabel(X2 + 14, y, l2Labels[k], 10, 'start'); });
+  L3.labelYs.forEach((y, k) => { subLabels += textLabel(X3 + 14, y, l3Labels[k], 10, 'start'); });
+
+  const totalWidth = X4 + 160;
+  const totalHeight = TOP + 20 + maxContentHeight + 30;
+  const edgeCount = (4 * 8 + 1) * n; // upper bound, boundary-reduced in practice
+
+  container.innerHTML = `
+    <div style="overflow-x:auto; border: 1px solid var(--border); border-radius: 6px;">
+      <svg viewBox="0 0 ${totalWidth} ${totalHeight}" width="${totalWidth}" height="${totalHeight}">
+        ${headers}
+        ${subLabels}
+        ${edges}
+        ${nodes}
+      </svg>
+    </div>
+    <div class="diagram-legend">
+      <span><span class="legend-line" style="background:var(--alive)"></span>positive weight</span>
+      <span><span class="legend-line" style="background:var(--warn)"></span>negative weight</span>
+      <span>${n} neurons in layers 1 &amp; 4, ${n * 4} in layer 2, ${n * 3} in layer 3 &mdash; up to ~${edgeCount} edges</span>
+      <span>click a neuron to trace its full ancestor/descendant chain (ctrl/cmd+click to select more than one)</span>
+    </div>
+  `;
+
+  wireGraphHover(container, { rows, cols, n, toIJ, l2Specs, l3Specs, outSpec, NEIGHBOR_OFFSETS, keyL1, keyL2, keyL3, keyL4 });
+}
+
+// Wires hover-to-trace on the just-rendered graph: hovering any neuron
+// highlights only its full transitive ancestor set (back to layer 1) and
+// descendant set (forward to the output), computed from the real weight
+// matrices -- not a fixed neighborhood, the actual dependency chain.
+function wireGraphHover(container, ctx) {
+  const svgEl = container.querySelector('svg');
+  if (!svgEl) return;
+  const { rows, cols, toIJ, l2Specs, l3Specs, outSpec, NEIGHBOR_OFFSETS, keyL1, keyL2, keyL3, keyL4 } = ctx;
+
+  const nodeByKey = new Map();
+  svgEl.querySelectorAll('.graph-node').forEach(el => nodeByKey.set(el.dataset.key, el));
+  const edgesBySrc = new Map();
+  svgEl.querySelectorAll('.graph-edge').forEach(el => {
+    const src = el.dataset.src;
+    if (!edgesBySrc.has(src)) edgesBySrc.set(src, []);
+    edgesBySrc.get(src).push(el);
+  });
+
+  function ancestorsOfL2(k, p) {
+    const [i, j] = toIJ(p);
+    const w = l2Specs[k].weights;
+    const out = [];
+    NEIGHBOR_OFFSETS.forEach(([di, dj], idx) => {
+      if (w[idx] === 0) return;
+      const ni = i + di, nj = j + dj;
+      if (ni < 0 || ni >= rows || nj < 0 || nj >= cols) return;
+      out.push(ni * cols + nj);
+    });
+    return out;
+  }
+
+  function computeTrace(key) {
+    const [layer, a, b] = key.split(':');
+    const l1 = new Set(), l2 = new Set(), l3 = new Set(), l4 = new Set();
+
+    if (layer === 'l1') {
+      const p = parseInt(a, 10);
+      l1.add(keyL1(p));
+      const [pi, pj] = toIJ(p);
+      for (let k = 0; k < 4; k++) {
+        const w = l2Specs[k].weights;
+        NEIGHBOR_OFFSETS.forEach(([di, dj], idx) => {
+          if (w[idx] === 0) return;
+          const qi = pi - di, qj = pj - dj;
+          if (qi < 0 || qi >= rows || qj < 0 || qj >= cols) return;
+          const q = qi * cols + qj;
+          l2.add(keyL2(k, q));
+          for (let m = 0; m < 3; m++) {
+            if (l3Specs[m].weights[k] !== 0) {
+              l3.add(keyL3(m, q));
+              if (outSpec.weights[m] !== 0) l4.add(keyL4(q));
+            }
+          }
+        });
+      }
+    } else if (layer === 'l2') {
+      const k = parseInt(a, 10), p = parseInt(b, 10);
+      l2.add(keyL2(k, p));
+      ancestorsOfL2(k, p).forEach(sp => l1.add(keyL1(sp)));
+      for (let m = 0; m < 3; m++) {
+        if (l3Specs[m].weights[k] !== 0) {
+          l3.add(keyL3(m, p));
+          if (outSpec.weights[m] !== 0) l4.add(keyL4(p));
+        }
+      }
+    } else if (layer === 'l3') {
+      const m = parseInt(a, 10), p = parseInt(b, 10);
+      l3.add(keyL3(m, p));
+      const w = l3Specs[m].weights;
+      for (let k = 0; k < 4; k++) {
+        if (w[k] !== 0) {
+          l2.add(keyL2(k, p));
+          ancestorsOfL2(k, p).forEach(sp => l1.add(keyL1(sp)));
+        }
+      }
+      if (outSpec.weights[m] !== 0) l4.add(keyL4(p));
+    } else if (layer === 'l4') {
+      const p = parseInt(a, 10);
+      l4.add(keyL4(p));
+      outSpec.weights.forEach((wv, m) => {
+        if (wv === 0) return;
+        l3.add(keyL3(m, p));
+        const w = l3Specs[m].weights;
+        for (let k = 0; k < 4; k++) {
+          if (w[k] !== 0) {
+            l2.add(keyL2(k, p));
+            ancestorsOfL2(k, p).forEach(sp => l1.add(keyL1(sp)));
+          }
+        }
+      });
+    }
+    return { l1, l2, l3, l4 };
+  }
+
+  let highlighted = [];
+
+  function clearHighlight() {
+    highlighted.forEach(el => el.classList.remove('graph-highlight', 'graph-origin'));
+    highlighted = [];
+    svgEl.classList.remove('tracing');
+  }
+
+  function highlightEdgesFrom(srcKey, nextSet) {
+    const list = edgesBySrc.get(srcKey);
+    if (!list) return;
+    list.forEach(el => {
+      if (!el.classList.contains('graph-highlight') && nextSet.has(el.dataset.dst)) {
+        el.classList.add('graph-highlight');
+        highlighted.push(el);
+      }
+    });
+  }
+
+  // Merges one selected node's trace into the current highlight set (does
+  // not clear first) -- lets multiple selections overlay without duplicate
+  // class churn.
+  function applyHighlightForKey(key) {
+    const trace = computeTrace(key);
+    [...trace.l1, ...trace.l2, ...trace.l3, ...trace.l4].forEach(k => {
+      const el = nodeByKey.get(k);
+      if (el && !el.classList.contains('graph-highlight')) {
+        el.classList.add('graph-highlight');
+        highlighted.push(el);
+      }
+    });
+    trace.l1.forEach(k => highlightEdgesFrom(k, trace.l2));
+    trace.l2.forEach(k => highlightEdgesFrom(k, trace.l3));
+    trace.l3.forEach(k => highlightEdgesFrom(k, trace.l4));
+    const origin = nodeByKey.get(key);
+    if (origin) origin.classList.add('graph-origin');
+  }
+
+  function recomputeHighlight() {
+    clearHighlight();
+    if (selectedKeys.size === 0) return;
+    selectedKeys.forEach(applyHighlightForKey);
+    svgEl.classList.add('tracing');
+  }
+
+  // Plain click: select only this neuron (replaces any selection); click
+  // the same lone-selected neuron again to clear. Ctrl/Cmd+click: toggle
+  // this neuron in/out of a multi-selection, keeping the rest.
+  let selectedKeys = new Set();
+  svgEl.addEventListener('click', (e) => {
+    const target = e.target.closest ? e.target.closest('.graph-node') : null;
+    const multi = e.ctrlKey || e.metaKey;
+    if (!target) {
+      if (!multi) { selectedKeys.clear(); recomputeHighlight(); }
+      return;
+    }
+    const key = target.dataset.key;
+    if (multi) {
+      if (selectedKeys.has(key)) selectedKeys.delete(key);
+      else selectedKeys.add(key);
+    } else if (selectedKeys.size === 1 && selectedKeys.has(key)) {
+      selectedKeys.clear();
+    } else {
+      selectedKeys = new Set([key]);
+    }
+    recomputeHighlight();
+  });
+}
+
+function renderGol() {
+  const badge = document.getElementById('golEpochBadge');
+  badge.textContent = `epoch ${golEpoch}` + (golState ? ` (${golState.length} x ${golState[0].length})` : '');
+  if (!golState) {
+    document.getElementById('golGrid').innerHTML = '';
+    document.getElementById('golStatus').textContent = 'Press "Start / Reset Simulations" to begin.';
+    return;
+  }
+  renderCellGrid(document.getElementById('golGrid'), golState);
+  document.getElementById('golStatus').textContent = '';
+}
+
+// --- Controls ---
+document.getElementById('resizeBtn').addEventListener('click', () => {
+  let rows = clamp(parseInt(document.getElementById('rowsInput').value, 10), MIN_DIM, MAX_DIM);
+  let cols = clamp(parseInt(document.getElementById('colsInput').value, 10), MIN_DIM, MAX_DIM);
+  document.getElementById('rowsInput').value = rows;
+  document.getElementById('colsInput').value = cols;
+  seed = makeGrid(rows, cols, 0);
+  renderSeed();
+  nnState = null; golState = null; nnEpoch = 0; golEpoch = 0;
+  lastNnInternals = null; lastNnInput = null; selectedCell = null;
+  renderNN(); renderGol();
+});
+
+document.getElementById('randomBtn').addEventListener('click', () => {
+  for (let i = 0; i < seed.length; i++)
+    for (let j = 0; j < seed[0].length; j++)
+      seed[i][j] = Math.random() < 0.35 ? 1 : 0;
+  renderSeed();
+});
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  seed = makeGrid(seed.length, seed[0].length, 0);
+  renderSeed();
+});
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  nnState = cloneGrid(seed);
+  golState = cloneGrid(seed);
+  nnEpoch = 0; golEpoch = 0;
+  lastNnInternals = null; lastNnInput = null; selectedCell = null;
+  renderNN(); renderGol();
+});
+
+document.getElementById('stepBtn').addEventListener('click', async () => {
+  if (!nnState || !golState) return;
+  const n = getEpochsN();
+  const stepBtn = document.getElementById('stepBtn');
+  const statusEl = document.getElementById('nnStatus');
+  stepBtn.disabled = true;
+  try {
+    const result = await nnStep(nnState, n);
+    nnState = result.output;
+    lastNnInternals = result;
+    lastNnInput = result.priorGrid;
+    nnEpoch += n;
+    for (let k = 0; k < n; k++) golState = golStep(golState);
+    golEpoch += n;
+    renderNN();
+    renderGol();
+  } catch (err) {
+    statusEl.textContent = `Could not reach the Python backend (${err.message}). Run "python3 server.py" and open http://localhost:8000.`;
+    stepBtn.disabled = false;
+  }
+});
+
+document.getElementById('showInternals').addEventListener('change', renderNN);
+document.getElementById('showFullGrid').addEventListener('change', renderInspector);
+document.getElementById('showMatrices').addEventListener('change', renderInspector);
+
+function clamp(v, lo, hi) { if (isNaN(v)) return lo; return Math.min(hi, Math.max(lo, v)); }
+
+// --- init ---
+renderSeed();
+renderNN();
+renderGol();
+loadNetworkSpec().then(renderInspector);
+</script>
+
+</body>
+</html>
