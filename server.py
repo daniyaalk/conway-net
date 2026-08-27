@@ -12,6 +12,8 @@ from pathlib import Path
 
 from network import ConwayNet, describe_network, run
 from matrix_network import FullGridNet
+from reduced_network import ReducedConwayNet, describe_reduced_network
+from reduced_network import run as reduced_run
 
 DIR = Path(__file__).parent
 PORT = 8000
@@ -63,6 +65,8 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
         elif self.path == "/api/network":
             self._send_json(200, describe_network())
+        elif self.path == "/api/reduced-network":
+            self._send_json(200, describe_reduced_network())
         else:
             self.send_error(404)
 
@@ -72,6 +76,8 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length))
             if self.path == "/api/step":
                 self._handle_step(payload)
+            elif self.path == "/api/reduced-step":
+                self._handle_reduced_step(payload)
             else:
                 self.send_error(404)
         except (ValueError, KeyError, json.JSONDecodeError) as exc:
@@ -104,6 +110,23 @@ class Handler(BaseHTTPRequestHandler):
             "priorGrid": prior_grid,
             "epochs": epochs,
             "engine": engine,
+        })
+
+    def _handle_reduced_step(self, payload):
+        epochs = int(payload.get("epochs", 1))
+        if epochs < 1:
+            raise ValueError("epochs must be >= 1")
+
+        history = reduced_run(payload["grid"], epochs)
+        prior_grid = history[-2]  # the grid that fed the final epoch
+        layer2, output = ReducedConwayNet(prior_grid).forward()
+        l2_1, l2_2, l2_3, l2_4 = _split(layer2, 4)
+
+        self._send_json(200, {
+            "layer2": {"n1": l2_1, "n2": l2_2, "n3": l2_3, "n4": l2_4},
+            "output": output,
+            "priorGrid": prior_grid,
+            "epochs": epochs,
         })
 
     def log_message(self, format, *args):

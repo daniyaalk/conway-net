@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Conway Net &mdash; Crossover Evolution</title>
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #1c1f26;
+    --border: #2c313c;
+    --text: #e6e8ec;
+    --muted: #8b93a3;
+    --alive: #4fd67a;
+    --alive-hover: #6fe396;
+    --dead: #23262d;
+    --dead-hover: #2c2f38;
+    --accent: #5b8cff;
+    --accent-hover: #7aa0ff;
+    --warn: #ff6b6b;
+    --zero: #f2a93b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 20px;
+  }
+  .panel-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
+  .panel-desc { font-size: 12px; color: var(--muted); margin: 0 0 12px; }
+
+  .controls-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 12px 20px;
+  }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; }
+  .field label .val { color: var(--text); font-weight: 600; }
+  .field input[type=number] {
+    width: 100%;
+    background: var(--dead);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 13px;
+  }
+  .field input[type=range] { width: 100%; accent-color: var(--accent); }
+
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; align-items: center; }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 13px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  button:hover { background: var(--accent-hover); }
+  button.secondary { background: var(--dead); color: var(--text); border: 1px solid var(--border); }
+  button.secondary:hover { background: var(--dead-hover); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .spacer { flex: 1; }
+
+  .stats-row { display: flex; gap: 24px; flex-wrap: wrap; margin-top: 14px; }
+  .stat { display: flex; flex-direction: column; gap: 2px; }
+  .stat .label { font-size: 11px; color: var(--muted); }
+  .stat .value { font-size: 20px; font-weight: 700; }
+  .stat .value.accent { color: var(--alive); }
+
+  .board { display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 900px) { .board { grid-template-columns: 1fr; } }
+
+  .diagram-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+  .diagram-empty { font-size: 12px; color: var(--muted); text-align: center; padding: 30px; }
+
+  .grid-compare { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; margin-top: 10px; }
+  .grid-block { text-align: center; }
+  .grid-block .sublabel { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .cellgrid { display: grid; gap: 2px; background: var(--border); padding: 2px; border-radius: 4px; }
+  .cell { width: 16px; height: 16px; background: var(--dead); border-radius: 2px; }
+  .cell.alive { background: var(--alive); }
+  .cell.wrong { background: var(--zero); }
+
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 11px; color: var(--muted); margin-top: 10px; }
+  .legend span { display: flex; align-items: center; gap: 5px; }
+  .legend-line { display: inline-block; width: 16px; height: 3px; border-radius: 2px; }
+  .legend-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+
+  .matrices { margin-top: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .matrix-title { font-size: 11px; color: var(--muted); margin-bottom: 5px; }
+  .matrix-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; }
+  .matrix-table { border-collapse: collapse; font-size: 11px; font-family: ui-monospace, "SF Mono", Menlo, monospace; white-space: nowrap; }
+  .matrix-table th, .matrix-table td { padding: 4px 7px; text-align: right; border-bottom: 1px solid var(--border); }
+  .matrix-table thead th { color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--border); }
+  .matrix-table tbody th { color: var(--muted); font-weight: 500; text-align: left; background: var(--bg); }
+  .matrix-table td.pos { color: var(--alive); }
+  .matrix-table td.neg { color: var(--warn); }
+  .matrix-table td.bias-col, .matrix-table th.bias-col { border-left: 1px solid var(--border); color: var(--text); }
+</style>
+</head>
+<body>
+
+<h1>Conway Net &mdash; Crossover Evolution</h1>
+<p class="subtitle">The same genetic algorithm as the mutation-only Evolution page, but children can now be bred from <strong>two</strong> parents via crossover (recombination) instead of always cloning one parent and mutating it. Dial the crossover rate to 0% to reproduce the original mutation-only page exactly, or crank it up to see whether mixing two networks' weights helps or hurts.</p>
+
+<div class="panel">
+  <div class="panel-title">Configuration</div>
+  <div class="controls-grid">
+    <div class="field"><label>Grid rows <span class="val" id="rowsVal">6</span></label><input type="range" id="gridRows" min="3" max="12" value="6"></div>
+    <div class="field"><label>Grid cols <span class="val" id="colsVal">6</span></label><input type="range" id="gridCols" min="3" max="12" value="6"></div>
+    <div class="field"><label>Population size <span class="val" id="popVal">40</span></label><input type="range" id="popSize" min="6" max="150" value="40"></div>
+    <div class="field"><label>Top-K reproduce <span class="val" id="topKVal">6</span></label><input type="range" id="topK" min="1" max="30" value="6"></div>
+    <div class="field"><label>Crossover rate % <span class="val" id="cxVal">100</span></label><input type="range" id="pCrossover" min="0" max="100" value="100"></div>
+    <div class="field"><label>Weight mutation % <span class="val" id="wVal">8</span></label><input type="range" id="pWeight" min="0" max="100" value="8"></div>
+    <div class="field"><label>Add neuron % <span class="val" id="anVal">5</span></label><input type="range" id="pAddNeuron" min="0" max="100" value="5"></div>
+    <div class="field"><label>Remove neuron % <span class="val" id="rnVal">3</span></label><input type="range" id="pRemoveNeuron" min="0" max="100" value="3"></div>
+    <div class="field"><label>Add layer % <span class="val" id="alVal">2</span></label><input type="range" id="pAddLayer" min="0" max="100" value="2"></div>
+    <div class="field"><label>Remove layer % <span class="val" id="rlVal">1.5</span></label><input type="range" id="pRemoveLayer" min="0" max="100" step="0.5" value="1.5"></div>
+  </div>
+  <div class="btn-row">
+    <button id="resetBtn">Reset / Randomize Population</button>
+    <button id="stepBtn" disabled>Step 1 Generation</button>
+    <button id="runBtn" disabled>Run 25 Generations</button>
+    <button class="secondary" id="playBtn" disabled>Auto-run ▶</button>
+    <div class="spacer"></div>
+  </div>
+  <div class="stats-row">
+    <div class="stat"><span class="label">Generation</span><span class="value" id="genStat">&mdash;</span></div>
+    <div class="stat"><span class="label">Best reward (vs. max)</span><span class="value accent" id="bestStat">&mdash;</span></div>
+    <div class="stat"><span class="label">Top-K avg reward (vs. max)</span><span class="value" id="avgStat">&mdash;</span></div>
+    <div class="stat"><span class="label">Best network params</span><span class="value" id="paramsStat">&mdash;</span></div>
+    <div class="stat"><span class="label">Best network shape</span><span class="value" id="shapeStat">&mdash;</span></div>
+    <div class="stat"><span class="label">Children from crossover</span><span class="value" id="cxStat">&mdash;</span></div>
+  </div>
+</div>
+
+<div class="board">
+  <div class="panel">
+    <div class="panel-title">Best network this generation</div>
+    <p class="panel-desc">Same neuron everywhere in this project: <code>fire = step(w&middot;x + b)</code>. Line thickness = |weight|, green = positive, red = negative. This structure is applied identically at every cell of the grid below.</p>
+    <div class="diagram-wrap" id="networkDiagram"><div class="diagram-empty">Click "Reset / Randomize Population" to begin.</div></div>
+    <div class="legend">
+      <span><span class="legend-line" style="background:var(--alive)"></span>positive weight</span>
+      <span><span class="legend-line" style="background:var(--warn)"></span>negative weight</span>
+    </div>
+    <div class="matrices" id="networkMatrices"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Fitness over generations</div>
+    <div class="diagram-wrap" id="fitnessChart"><div class="diagram-empty">No data yet.</div></div>
+    <div class="legend">
+      <span><span class="legend-line" style="background:var(--alive)"></span>best</span>
+      <span><span class="legend-line" style="background:var(--accent)"></span>top-K average</span>
+      <span><span class="legend-swatch" style="background:var(--muted); opacity:0.4"></span>population mean &plusmn;1 std dev</span>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-title">Best network vs. real Game of Life</div>
+  <p class="panel-desc">A fixed random test grid (part of the fitness evaluation set). Applying the best network to every cell, compared against the true rule &mdash; amber = wrong.</p>
+  <div class="grid-compare" id="gridCompare"><div class="diagram-empty">No data yet.</div></div>
+</div>
+
+<script>
+// ============================================================
+// Reference Game of Life + grid helpers
+// ============================================================
+function makeGrid(rows, cols, fill) {
+  const g = [];
+  for (let i = 0; i < rows; i++) g.push(new Array(cols).fill(fill));
+  return g;
+}
+function golStep(grid) {
+  const rows = grid.length, cols = grid[0].length;
+  const next = makeGrid(rows, cols, 0);
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      let n = 0;
+      for (let di = -1; di <= 1; di++) {
+        for (let dj = -1; dj <= 1; dj++) {
+          if (di === 0 && dj === 0) continue;
+          const ni = i + di, nj = j + dj;
+          if (ni >= 0 && ni < rows && nj >= 0 && nj < cols) n += grid[ni][nj];
+        }
+      }
+      const alive = grid[i][j];
+      next[i][j] = alive ? (n === 2 || n === 3 ? 1 : 0) : (n === 3 ? 1 : 0);
+    }
+  }
+  return next;
+}
+function randomGrid(rows, cols, p) {
+  const g = makeGrid(rows, cols, 0);
+  for (let i = 0; i < rows; i++) for (let j = 0; j < cols; j++) g[i][j] = Math.random() < (p || 0.4) ? 1 : 0;
+  return g;
+}
+function extractPatch(grid, i, j) {
+  const rows = grid.length, cols = grid[0].length;
+  const patch = [];
+  for (let di = -1; di <= 1; di++) {
+    for (let dj = -1; dj <= 1; dj++) {
+      const ni = i + di, nj = j + dj;
+      patch.push(ni >= 0 && ni < rows && nj >= 0 && nj < cols ? grid[ni][nj] : 0);
+    }
+  }
+  return patch;
+}
+
+// ============================================================
+// Genome: variable hidden layers, same weighted-sum + step neuron used
+// throughout this project. Input = 9 (3x3 patch), output = 1.
+// ============================================================
+const MAX_HIDDEN_LAYERS = 4;
+const MAX_NEURONS_PER_LAYER = 12;
+const MIN_NEURONS_PER_LAYER = 1;
+
+function stepFn(sum) { return sum >= 0 ? 1 : 0; }
+function randWeight() { return (Math.random() * 2 - 1) * 2; }
+
+function layerForward(weights, biases, input) {
+  const out = new Array(weights.length);
+  for (let n = 0; n < weights.length; n++) {
+    let s = biases[n];
+    const w = weights[n];
+    for (let k = 0; k < w.length; k++) s += w[k] * input[k];
+    out[n] = stepFn(s);
+  }
+  return out;
+}
+function genomeForward(genome, patch) {
+  let cur = patch;
+  for (const layer of genome.hiddenLayers) cur = layerForward(layer.weights, layer.biases, cur);
+  return layerForward([genome.outputWeights], [genome.outputBias], cur)[0];
+}
+function paramCount(genome) {
+  let n = 0, prevWidth = 9;
+  for (const layer of genome.hiddenLayers) {
+    n += layer.weights.length * prevWidth + layer.biases.length;
+    prevWidth = layer.weights.length;
+  }
+  return n + genome.outputWeights.length + 1;
+}
+// Reward weights for the fitness score: a dead/dead match counts for half of a
+// live/live match (otherwise a network that just predicts "always dead" scores
+// deceptively well from class imbalance alone, without learning the rule), and
+// any live/dead mismatch costs more than a live/live match is worth, so evolution
+// is pushed toward actually getting live cells right rather than playing it safe.
+const REWARD_LIVE_MATCH = 1;
+const REWARD_DEAD_MATCH = 0.5;
+const PUNISH_MISMATCH = 1.5;
+
+function evaluateFitness(genome, testGrids) {
+  let correct = 0, total = 0, score = 0;
+  for (const { grid, truth } of testGrids) {
+    const rows = grid.length, cols = grid[0].length;
+    for (let i = 0; i < rows; i++) {
+      for (let j = 0; j < cols; j++) {
+        const pred = genomeForward(genome, extractPatch(grid, i, j));
+        const actual = truth[i][j];
+        if (pred === actual) correct++;
+        if (pred === 1 && actual === 1) score += REWARD_LIVE_MATCH;
+        else if (pred === 0 && actual === 0) score += REWARD_DEAD_MATCH;
+        else score -= PUNISH_MISMATCH;
+        total++;
+      }
+    }
+  }
+  return { accuracy: correct / total, fitness: score / total, params: paramCount(genome) };
+}
+// The theoretical max reward achievable on this test set — a perfect predictor
+// gets every cell's best-case reward (live/live or dead/dead), nothing more.
+// Used to show fitness as "% of max reward" instead of raw score / plain accuracy.
+function computeMaxFitness(testGrids) {
+  let sum = 0, total = 0;
+  for (const { truth } of testGrids) {
+    for (const row of truth) {
+      for (const cell of row) {
+        sum += cell === 1 ? REWARD_LIVE_MATCH : REWARD_DEAD_MATCH;
+        total++;
+      }
+    }
+  }
+  return total > 0 ? sum / total : 1;
+}
+function meanStd(values) {
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
+  return { mean, std: Math.sqrt(variance) };
+}
+function makeTestGrids(count, rows, cols) {
+  const grids = [];
+  for (let k = 0; k < count; k++) {
+    const grid = randomGrid(rows, cols, 0.4);
+    grids.push({ grid, truth: golStep(grid) });
+  }
+  return grids;
+}
+
+function inputWidthOf(genome, layerIdx) {
+  return layerIdx === 0 ? 9 : genome.hiddenLayers[layerIdx - 1].weights.length;
+}
+function makeRandomLayer(inputWidth, neurons) {
+  const weights = [], biases = [];
+  for (let n = 0; n < neurons; n++) {
+    weights.push(Array.from({ length: inputWidth }, randWeight));
+    biases.push(randWeight());
+  }
+  return { weights, biases };
+}
+function createRandomGenome() {
+  const numHidden = Math.floor(Math.random() * 3);
+  const hiddenLayers = [];
+  let inputWidth = 9;
+  for (let l = 0; l < numHidden; l++) {
+    const neurons = 1 + Math.floor(Math.random() * 4);
+    hiddenLayers.push(makeRandomLayer(inputWidth, neurons));
+    inputWidth = neurons;
+  }
+  return { hiddenLayers, outputWeights: Array.from({ length: inputWidth }, randWeight), outputBias: randWeight() };
+}
+function cloneGenome(genome) {
+  return {
+    hiddenLayers: genome.hiddenLayers.map(l => ({ weights: l.weights.map(row => row.slice()), biases: l.biases.slice() })),
+    outputWeights: genome.outputWeights.slice(),
+    outputBias: genome.outputBias,
+  };
+}
+function fixVectorWidth(vec, newWidth) {
+  const out = vec.slice(0, newWidth);
+  while (out.length < newWidth) out.push(randWeight());
+  return out;
+}
+function fixLayerInputWidth(layer, newWidth) {
+  layer.weights = layer.weights.map(row => fixVectorWidth(row, newWidth));
+}
+function resizeDownstreamInputs(genome, changedIdx, newWidth) {
+  const nextIdx = changedIdx + 1;
+  if (nextIdx < genome.hiddenLayers.length) fixLayerInputWidth(genome.hiddenLayers[nextIdx], newWidth);
+  else genome.outputWeights = fixVectorWidth(genome.outputWeights, newWidth);
+}
+function mutate(genome, p) {
+  const g = cloneGenome(genome);
+
+  g.hiddenLayers.forEach(layer => {
+    layer.weights.forEach(row => { for (let k = 0; k < row.length; k++) if (Math.random() < p.weight) row[k] = randWeight(); });
+    for (let n = 0; n < layer.biases.length; n++) if (Math.random() < p.weight) layer.biases[n] = randWeight();
+  });
+  g.outputWeights.forEach((_, k) => { if (Math.random() < p.weight) g.outputWeights[k] = randWeight(); });
+  if (Math.random() < p.weight) g.outputBias = randWeight();
+
+  if (Math.random() < p.addNeuron) {
+    if (g.hiddenLayers.length === 0) {
+      // nowhere to add a neuron to yet — "adding a neuron" means creating the first hidden layer with one neuron
+      g.hiddenLayers.push(makeRandomLayer(9, 1));
+      resizeDownstreamInputs(g, 0, 1);
+    } else {
+      const idx = Math.floor(Math.random() * g.hiddenLayers.length);
+      const layer = g.hiddenLayers[idx];
+      if (layer.weights.length < MAX_NEURONS_PER_LAYER) {
+        layer.weights.push(Array.from({ length: inputWidthOf(g, idx) }, randWeight));
+        layer.biases.push(randWeight());
+        resizeDownstreamInputs(g, idx, layer.weights.length);
+      }
+    }
+  }
+  if (g.hiddenLayers.length > 0 && Math.random() < p.removeNeuron) {
+    const idx = Math.floor(Math.random() * g.hiddenLayers.length);
+    const layer = g.hiddenLayers[idx];
+    if (layer.weights.length > MIN_NEURONS_PER_LAYER) {
+      const rm = Math.floor(Math.random() * layer.weights.length);
+      layer.weights.splice(rm, 1);
+      layer.biases.splice(rm, 1);
+      resizeDownstreamInputs(g, idx, layer.weights.length);
+    }
+  }
+  if (g.hiddenLayers.length < MAX_HIDDEN_LAYERS && Math.random() < p.addLayer) {
+    const idx = Math.floor(Math.random() * (g.hiddenLayers.length + 1));
+    const inputWidth = idx === 0 ? 9 : g.hiddenLayers[idx - 1].weights.length;
+    const neurons = 1 + Math.floor(Math.random() * 4);
+    g.hiddenLayers.splice(idx, 0, makeRandomLayer(inputWidth, neurons));
+    resizeDownstreamInputs(g, idx, neurons);
+  }
+  if (g.hiddenLayers.length > 0 && Math.random() < p.removeLayer) {
+    const idx = Math.floor(Math.random() * g.hiddenLayers.length);
+    const prevWidth = idx === 0 ? 9 : g.hiddenLayers[idx - 1].weights.length;
+    g.hiddenLayers.splice(idx, 1);
+    if (idx < g.hiddenLayers.length) fixLayerInputWidth(g.hiddenLayers[idx], prevWidth);
+    else g.outputWeights = fixVectorWidth(g.outputWeights, prevWidth);
+  }
+  return g;
+}
+
+// ============================================================
+// Crossover (the new part): combine TWO parents into one child.
+// Variable-depth/variable-width genomes make naive "swap weight vectors"
+// crossover ill-defined when the parents' shapes differ, so this takes a
+// pragmatic approach: one parent donates the child's whole topology (its
+// "skeleton"); then, neuron by neuron, each slot has a 50% chance of instead
+// inheriting the OTHER parent's weights for that same slot, width-adjusted
+// with the same truncate/pad trick mutate() already uses when structure
+// changes. Slots the other parent doesn't have (it's shallower, or that
+// layer is narrower) simply keep the skeleton parent's own values -- there's
+// nothing to cross over with.
+//
+// The skeleton donor is the DEEPER parent, not a coin flip: a random choice
+// here silently throws away structural progress half the time whenever a
+// genome with hidden layers breeds with one that has none (the child can
+// only ever be as deep as whichever parent supplied the skeleton), which
+// defeats the same protected-structural-lineage mechanism stepGeneration()
+// relies on below. Always keeping the deeper parent's depth means crossover
+// can still shuffle weights, but never accidentally erases a layer.
+function crossover(parentA, parentB) {
+  const depthA = parentA.hiddenLayers.length, depthB = parentB.hiddenLayers.length;
+  const base = depthA === depthB ? (Math.random() < 0.5 ? parentA : parentB) : (depthA > depthB ? parentA : parentB);
+  const other = base === parentA ? parentB : parentA;
+  const child = cloneGenome(base);
+
+  child.hiddenLayers.forEach((layer, layerIdx) => {
+    const otherLayer = other.hiddenLayers[layerIdx];
+    if (!otherLayer) return; // other parent doesn't reach this depth
+    layer.weights.forEach((row, neuronIdx) => {
+      if (Math.random() >= 0.5) return; // this slot stays with the base parent
+      const otherWeights = otherLayer.weights[neuronIdx];
+      if (!otherWeights) return; // other parent doesn't have a neuron at this index
+      layer.weights[neuronIdx] = fixVectorWidth(otherWeights, row.length);
+      layer.biases[neuronIdx] = otherLayer.biases[neuronIdx];
+    });
+  });
+
+  if (Math.random() < 0.5) {
+    child.outputWeights = fixVectorWidth(other.outputWeights, child.outputWeights.length);
+    child.outputBias = other.outputBias;
+  }
+
+  return child;
+}
+
+// ============================================================
+// Evolution runner state
+// ============================================================
+let population = [];
+let testGrids = [];
+let generation = 0;
+let fitnessHistory = []; // [{gen, best, avg, stdDev}] — all as fraction of theoretical max reward
+let bestGenome = null, bestAccuracy = 0, bestFitness = -Infinity;
+let protectedGenome = null, protectedFitness = -Infinity;
+let maxFitness = 1; // theoretical max reward on the current test set, recomputed per run
+let lastCrossoverCount = 0, lastChildCount = 0;
+let playing = false, playTimer = null;
+
+function readParams() {
+  return {
+    rows: +document.getElementById('gridRows').value,
+    cols: +document.getElementById('gridCols').value,
+    pop: +document.getElementById('popSize').value,
+    topK: +document.getElementById('topK').value,
+    crossover: (+document.getElementById('pCrossover').value) / 100,
+    weight: (+document.getElementById('pWeight').value) / 100,
+    addNeuron: (+document.getElementById('pAddNeuron').value) / 100,
+    removeNeuron: (+document.getElementById('pRemoveNeuron').value) / 100,
+    addLayer: (+document.getElementById('pAddLayer').value) / 100,
+    removeLayer: (+document.getElementById('pRemoveLayer').value) / 100,
+  };
+}
+
+function resetRun() {
+  const p = readParams();
+  testGrids = makeTestGrids(100, p.rows, p.cols);
+  maxFitness = computeMaxFitness(testGrids);
+  population = Array.from({ length: p.pop }, createRandomGenome);
+  generation = 0;
+  fitnessHistory = [];
+  bestGenome = null; bestAccuracy = 0; bestFitness = -Infinity;
+  protectedGenome = null; protectedFitness = -Infinity;
+  lastCrossoverCount = 0; lastChildCount = 0;
+  document.getElementById('stepBtn').disabled = false;
+  document.getElementById('runBtn').disabled = false;
+  document.getElementById('playBtn').disabled = false;
+  evaluateAndRender(false);
+}
+
+function stepGeneration() {
+  const p = readParams();
+  const scored = population.map(genome => {
+    const { accuracy, fitness, params } = evaluateFitness(genome, testGrids);
+    return { genome, accuracy, fitness, params };
+  });
+  scored.sort((a, b) => (b.fitness - a.fitness) || (a.params - b.params));
+
+  const topK = scored.slice(0, Math.min(p.topK, scored.length)).map(s => s.genome);
+
+  // Same protected-lineage mechanism as the mutation-only page, for the same reason:
+  // a freshly-grown hidden layer starts with random downstream weights, so it
+  // essentially never immediately beats an already-tuned smaller network — the
+  // parsimony tiebreak above then kills it before mutation/crossover gets a
+  // chance to refine it, permanently trapping evolution at whatever
+  // hidden-layer count the population happens to collapse to.
+  for (const s of scored) {
+    if (s.genome.hiddenLayers.length > 0 && s.fitness >= protectedFitness) {
+      protectedGenome = s.genome; protectedFitness = s.fitness;
+    }
+  }
+
+  const parentPool = protectedGenome ? topK.concat([protectedGenome]) : topK;
+  const nextGen = topK.slice();
+  if (protectedGenome) nextGen.push(protectedGenome);
+
+  let crossoverCount = 0, childCount = 0;
+  while (nextGen.length < p.pop) {
+    let child;
+    if (parentPool.length >= 2 && Math.random() < p.crossover) {
+      const idxA = Math.floor(Math.random() * parentPool.length);
+      let idxB = Math.floor(Math.random() * parentPool.length);
+      if (parentPool.length > 1) while (idxB === idxA) idxB = Math.floor(Math.random() * parentPool.length);
+      child = crossover(parentPool[idxA], parentPool[idxB]);
+      crossoverCount++;
+    } else {
+      const parent = parentPool[Math.floor(Math.random() * parentPool.length)];
+      child = cloneGenome(parent);
+    }
+    nextGen.push(mutate(child, p));
+    childCount++;
+  }
+  lastCrossoverCount = crossoverCount; lastChildCount = childCount;
+  population = nextGen;
+  generation++;
+
+  const best = scored[0];
+  const avgTopK = scored.slice(0, Math.min(p.topK, scored.length)).reduce((s, r) => s + r.fitness, 0) / Math.min(p.topK, scored.length);
+  const { mean: popMean, std: popStd } = meanStd(scored.map(s => s.fitness / maxFitness));
+  fitnessHistory.push({ gen: generation, best: best.fitness / maxFitness, avg: avgTopK / maxFitness, popMean, popStd });
+  if (best.fitness >= bestFitness) { bestFitness = best.fitness; bestAccuracy = best.accuracy; bestGenome = best.genome; }
+}
+
+function evaluateAndRender(advance) {
+  if (advance) stepGeneration();
+  else {
+    // initial render before any generation has run: just show a random individual as the "current best" placeholder
+    const scored = population.map(genome => { const { accuracy, fitness, params } = evaluateFitness(genome, testGrids); return { genome, accuracy, fitness, params }; });
+    scored.sort((a, b) => (b.fitness - a.fitness) || (a.params - b.params));
+    bestGenome = scored[0].genome; bestAccuracy = scored[0].accuracy; bestFitness = scored[0].fitness;
+    const topKn = Math.min(readParams().topK, scored.length);
+    const avgTopK0 = scored.slice(0, topKn).reduce((s, r) => s + r.fitness, 0) / topKn;
+    const { mean: popMean0, std: popStd0 } = meanStd(scored.map(s => s.fitness / maxFitness));
+    fitnessHistory.push({ gen: 0, best: scored[0].fitness / maxFitness, avg: avgTopK0 / maxFitness, popMean: popMean0, popStd: popStd0 });
+  }
+  renderStats();
+  renderDiagram(bestGenome);
+  renderMatrices(bestGenome);
+  renderChart();
+  renderGridCompare(bestGenome);
+}
+
+function renderStats() {
+  document.getElementById('genStat').textContent = generation;
+  document.getElementById('bestStat').textContent = ((bestFitness / maxFitness) * 100).toFixed(1) + '%';
+  const last = fitnessHistory[fitnessHistory.length - 1];
+  document.getElementById('avgStat').textContent = last ? (last.avg * 100).toFixed(1) + '%' : '—';
+  document.getElementById('paramsStat').textContent = bestGenome ? paramCount(bestGenome) : '—';
+  document.getElementById('shapeStat').textContent = bestGenome
+    ? [9, ...bestGenome.hiddenLayers.map(l => l.weights.length), 1].join(' → ')
+    : '—';
+  document.getElementById('cxStat').textContent = lastChildCount > 0
+    ? `${lastCrossoverCount} / ${lastChildCount}`
+    : '—';
+}
+
+// ============================================================
+// Diagram: dynamic layered graph for a variable-depth genome
+// ============================================================
+function weightStyle(w) {
+  const width = Math.min(6, 1 + Math.abs(w) * 1.5);
+  const color = w > 0 ? 'var(--alive)' : (w < 0 ? 'var(--warn)' : 'var(--muted)');
+  return { width, color };
+}
+function edgeLine(x1, y1, x2, y2, weight) {
+  const { width, color } = weightStyle(weight);
+  return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${width.toFixed(2)}" opacity="0.75"><title>weight ${weight.toFixed(3)}</title></line>`;
+}
+function nodeCircle(cx, cy, r, title) {
+  return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="var(--dead)" stroke="var(--accent)" stroke-width="1.5"><title>${title}</title></circle>`;
+}
+function textLabel(x, y, text, size, anchor) {
+  return `<text x="${x}" y="${y}" font-size="${size || 10}" fill="var(--muted)" text-anchor="${anchor || 'middle'}">${text}</text>`;
+}
+
+function renderDiagram(genome) {
+  const container = document.getElementById('networkDiagram');
+  if (!genome) { container.innerHTML = '<div class="diagram-empty">No network yet.</div>'; return; }
+
+  const widths = [9, ...genome.hiddenLayers.map(l => l.weights.length), 1];
+  const COL_GAP = 140, R = 10, ROW_GAP = 34, TOP = 30;
+  const maxCount = Math.max(...widths);
+  const totalHeight = TOP + 20 + maxCount * ROW_GAP;
+  const totalWidth = 60 + (widths.length - 1) * COL_GAP + 60;
+
+  const positions = widths.map((count, colIdx) => {
+    const x = 60 + colIdx * COL_GAP;
+    const startY = TOP + 20 + (maxCount - count) * ROW_GAP / 2;
+    const pos = [];
+    for (let n = 0; n < count; n++) pos.push({ x, y: startY + n * ROW_GAP });
+    return pos;
+  });
+
+  let edges = '';
+  for (let l = 0; l < genome.hiddenLayers.length; l++) {
+    const layer = genome.hiddenLayers[l];
+    layer.weights.forEach((row, n) => {
+      row.forEach((w, k) => { edges += edgeLine(positions[l][k].x, positions[l][k].y, positions[l + 1][n].x, positions[l + 1][n].y, w); });
+    });
+  }
+  const lastCol = widths.length - 2;
+  genome.outputWeights.forEach((w, k) => {
+    edges += edgeLine(positions[lastCol][k].x, positions[lastCol][k].y, positions[lastCol + 1][0].x, positions[lastCol + 1][0].y, w);
+  });
+
+  let nodes = '';
+  positions.forEach((col, colIdx) => {
+    col.forEach((p, n) => {
+      const label = colIdx === 0 ? `input pixel ${n}` : (colIdx === widths.length - 1 ? 'output' : `layer ${colIdx} neuron ${n}`);
+      nodes += nodeCircle(p.x, p.y, R, label);
+    });
+  });
+
+  let headers = positions.map((col, colIdx) => {
+    const label = colIdx === 0 ? 'input (9)' : (colIdx === widths.length - 1 ? 'output' : `hidden ${colIdx} (${col.length})`);
+    return textLabel(col[0].x, 16, label, 11);
+  }).join('');
+
+  container.innerHTML = `<svg viewBox="0 0 ${totalWidth} ${totalHeight}" width="${totalWidth}" height="${totalHeight}">${headers}${edges}${nodes}</svg>`;
+}
+
+// ============================================================
+// Weight/bias matrices for the best network, one table per layer
+// ============================================================
+function renderMatrixTable(weights, biases, title) {
+  const neurons = weights.length;
+  const inputs = neurons > 0 ? weights[0].length : 0;
+  let html = `<div class="matrix-title">${title}</div><div class="matrix-scroll"><table class="matrix-table"><thead><tr><th></th>`;
+  for (let k = 0; k < inputs; k++) html += `<th>w<sub>${k}</sub></th>`;
+  html += `<th class="bias-col">bias</th></tr></thead><tbody>`;
+  for (let n = 0; n < neurons; n++) {
+    html += `<tr><th>n${n}</th>`;
+    for (let k = 0; k < inputs; k++) {
+      const w = weights[n][k];
+      html += `<td class="${w > 0 ? 'pos' : (w < 0 ? 'neg' : '')}">${w.toFixed(2)}</td>`;
+    }
+    html += `<td class="bias-col">${biases[n].toFixed(2)}</td></tr>`;
+  }
+  html += `</tbody></table></div>`;
+  return html;
+}
+function renderMatrices(genome) {
+  const container = document.getElementById('networkMatrices');
+  if (!genome) { container.innerHTML = ''; return; }
+  let html = '';
+  genome.hiddenLayers.forEach((layer, idx) => {
+    const inWidth = idx === 0 ? 9 : genome.hiddenLayers[idx - 1].weights.length;
+    html += renderMatrixTable(layer.weights, layer.biases, `Hidden layer ${idx + 1} &nbsp;(${inWidth} &rarr; ${layer.weights.length})`);
+  });
+  const lastWidth = genome.hiddenLayers.length ? genome.hiddenLayers[genome.hiddenLayers.length - 1].weights.length : 9;
+  html += renderMatrixTable([genome.outputWeights], [genome.outputBias], `Output &nbsp;(${lastWidth} &rarr; 1)`);
+  container.innerHTML = html;
+}
+
+// ============================================================
+// Fitness chart: simple SVG line chart
+// ============================================================
+function renderChart() {
+  const container = document.getElementById('fitnessChart');
+  if (fitnessHistory.length === 0) { container.innerHTML = '<div class="diagram-empty">No data yet.</div>'; return; }
+
+  const W = 460, H = 220, PAD = 30;
+  const maxGen = Math.max(1, fitnessHistory[fitnessHistory.length - 1].gen);
+
+  // y-range must accommodate the deviation band and can go negative (a mismatch
+  // costs more than a match is worth, so a bad population can score below zero),
+  // and can't exceed 1 (100% of the theoretical max reward), so derive it from data.
+  const allVals = fitnessHistory.flatMap(h => [h.best, h.avg, h.popMean + h.popStd, h.popMean - h.popStd]);
+  const maxV = Math.max(1, ...allVals);
+  const minV = Math.min(0, ...allVals);
+  const x = g => PAD + (g / maxGen) * (W - 2 * PAD);
+  const y = v => H - PAD - ((v - minV) / (maxV - minV)) * (H - 2 * PAD);
+
+  const bestPts = fitnessHistory.map(h => `${x(h.gen)},${y(h.best)}`).join(' ');
+  const avgPts = fitnessHistory.map(h => `${x(h.gen)},${y(h.avg)}`).join(' ');
+  const bandTop = fitnessHistory.map(h => `${x(h.gen)},${y(h.popMean + h.popStd)}`);
+  const bandBottom = fitnessHistory.slice().reverse().map(h => `${x(h.gen)},${y(h.popMean - h.popStd)}`);
+  const bandPts = bandTop.concat(bandBottom).join(' ');
+  const meanPts = fitnessHistory.map(h => `${x(h.gen)},${y(h.popMean)}`).join(' ');
+
+  let gridLines = '';
+  const STEPS = 5;
+  for (let s = 0; s <= STEPS; s++) {
+    const v = minV + (s / STEPS) * (maxV - minV);
+    gridLines += `<line x1="${PAD}" y1="${y(v)}" x2="${W - PAD}" y2="${y(v)}" stroke="var(--border)" stroke-width="1"/>`;
+    gridLines += textLabel(PAD - 6, y(v) + 3, (v * 100).toFixed(0) + '%', 9, 'end');
+  }
+
+  container.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px; height:auto;">
+      ${gridLines}
+      <polygon points="${bandPts}" fill="var(--muted)" opacity="0.18" stroke="none"/>
+      <polyline points="${meanPts}" fill="none" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3,3" opacity="0.7"/>
+      <polyline points="${avgPts}" fill="none" stroke="var(--accent)" stroke-width="2" opacity="0.8"/>
+      <polyline points="${bestPts}" fill="none" stroke="var(--alive)" stroke-width="2.5"/>
+    </svg>`;
+}
+
+// ============================================================
+// Grid comparison: best network applied to a real test grid vs truth
+// ============================================================
+function renderCellGrid(container, grid, wrongMask) {
+  const rows = grid.length, cols = grid[0].length;
+  container.style.gridTemplateColumns = `repeat(${cols}, 16px)`;
+  container.innerHTML = '';
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      const cell = document.createElement('div');
+      const wrong = wrongMask && wrongMask[i][j];
+      cell.className = 'cell' + (wrong ? ' wrong' : (grid[i][j] ? ' alive' : ''));
+      container.appendChild(cell);
+    }
+  }
+}
+function renderGridCompare(genome) {
+  const container = document.getElementById('gridCompare');
+  if (!genome || testGrids.length === 0) { container.innerHTML = '<div class="diagram-empty">No data yet.</div>'; return; }
+  const { grid, truth } = testGrids[0];
+  const rows = grid.length, cols = grid[0].length;
+  const predicted = makeGrid(rows, cols, 0);
+  const wrong = makeGrid(rows, cols, 0);
+  let correct = 0;
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      const p = genomeForward(genome, extractPatch(grid, i, j));
+      predicted[i][j] = p;
+      if (p !== truth[i][j]) wrong[i][j] = 1; else correct++;
+    }
+  }
+  container.innerHTML = '';
+  const blocks = [
+    ['input grid', grid, null],
+    ['true next state', truth, null],
+    [`network prediction (${((correct / (rows * cols)) * 100).toFixed(0)}% correct on this grid)`, predicted, wrong],
+  ];
+  blocks.forEach(([label, g, wrongMask]) => {
+    const block = document.createElement('div');
+    block.className = 'grid-block';
+    const sub = document.createElement('div');
+    sub.className = 'sublabel';
+    sub.textContent = label;
+    block.appendChild(sub);
+    const gridEl = document.createElement('div');
+    gridEl.className = 'cellgrid';
+    block.appendChild(gridEl);
+    renderCellGrid(gridEl, g, wrongMask);
+    container.appendChild(block);
+  });
+}
+
+// ============================================================
+// Wiring
+// ============================================================
+['gridRows','gridCols','popSize','topK','pCrossover','pWeight','pAddNeuron','pRemoveNeuron','pAddLayer','pRemoveLayer'].forEach(id => {
+  const el = document.getElementById(id);
+  const valMap = { gridRows: 'rowsVal', gridCols: 'colsVal', popSize: 'popVal', topK: 'topKVal', pCrossover: 'cxVal', pWeight: 'wVal', pAddNeuron: 'anVal', pRemoveNeuron: 'rnVal', pAddLayer: 'alVal', pRemoveLayer: 'rlVal' };
+  el.addEventListener('input', () => { document.getElementById(valMap[id]).textContent = el.value; });
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => { stopPlaying(); resetRun(); });
+document.getElementById('stepBtn').addEventListener('click', () => evaluateAndRender(true));
+document.getElementById('runBtn').addEventListener('click', () => {
+  for (let i = 0; i < 25; i++) stepGeneration();
+  renderStats(); renderDiagram(bestGenome); renderMatrices(bestGenome); renderChart(); renderGridCompare(bestGenome);
+});
+document.getElementById('playBtn').addEventListener('click', () => {
+  if (playing) stopPlaying();
+  else {
+    playing = true;
+    document.getElementById('playBtn').textContent = 'Stop ⏸';
+    playTimer = setInterval(() => evaluateAndRender(true), 120);
+  }
+});
+function stopPlaying() {
+  playing = false;
+  document.getElementById('playBtn').textContent = 'Auto-run ▶';
+  if (playTimer) { clearInterval(playTimer); playTimer = null; }
+}
+</script>
+
+</body>
+</html>

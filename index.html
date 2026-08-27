@@ -146,6 +146,9 @@
     background-image: repeating-linear-gradient(45deg, var(--dead) 0 3px, var(--border) 3px 6px);
   }
   .cell.patch-region { outline: 2px solid var(--zero); outline-offset: -2px; }
+  /* ===== Reduced network panel: start ===== */
+  .cell.mismatch { background: var(--zero); }
+  /* ===== Reduced network panel: end ===== */
 
   .mini-grids { display: flex; gap: 16px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
   .mini-grid-block { text-align: center; }
@@ -182,6 +185,43 @@
     padding: 16px;
     margin-top: 20px;
   }
+  /* ===== Page nav + collapsible section styling: start ===== */
+  .page-nav {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 10px;
+    margin-bottom: 20px;
+  }
+  .page-nav a {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 10px;
+    border-radius: 6px;
+  }
+  .page-nav a:hover { color: var(--text); background: var(--dead); }
+  details.full-network-panel summary {
+    cursor: pointer;
+    list-style: none;
+  }
+  details.full-network-panel summary::-webkit-details-marker { display: none; }
+  details.full-network-panel summary::before {
+    content: '▸';
+    display: inline-block;
+    margin-right: 8px;
+    color: var(--muted);
+    transition: transform 0.15s;
+  }
+  details.full-network-panel[open] summary::before { transform: rotate(90deg); }
+  /* ===== Page nav + collapsible section styling: end ===== */
 
   .graph-node { cursor: pointer; }
   svg.tracing .graph-node,
@@ -253,7 +293,13 @@
   <button id="stepBtn">Step &#9654;</button>
 </div>
 
-<div class="board">
+<nav class="page-nav">
+  <a href="#board">Simulation</a>
+  <a href="#fullNetworkPanel">FullGridNet graph</a>
+  <a href="#reducedNetworkPanel">Reduced network</a>
+</nav>
+
+<div class="board" id="board">
   <div class="seed-section">
     <div class="col-header">
       <span class="col-title">Seed state</span>
@@ -334,6 +380,17 @@
             <div class="label">W1, W2, W3 &mdash; the real matrices behind the diagram above. The highlighted row in each is this cell's actual vector; green = firing.</div>
             <div id="matrixView"></div>
           </div>
+
+          <!-- ===== Reduced network (layer 3 eliminated), same cell: start ===== -->
+          <div class="diagram-block" id="reducedCellDiagramBlock">
+            <div class="label">reduced network graph for this SAME cell &mdash; layer 3 eliminated, one neuron combines layer 2 directly into the output.</div>
+            <div id="reducedCellDiagram"></div>
+          </div>
+          <div class="matrix-block" id="reducedCellMatrixBlock" style="display:none;">
+            <div class="label">W1, W2 &mdash; the reduced network's real matrices for this same cell.</div>
+            <div id="reducedCellMatrixView"></div>
+          </div>
+          <!-- ===== Reduced network (layer 3 eliminated), same cell: end ===== -->
         </div>
       </div>
     </div>
@@ -350,14 +407,41 @@
   </div>
 </div>
 
-<div class="full-network-panel">
-  <div class="col-header">
+<details class="full-network-panel" id="fullNetworkPanel">
+  <summary class="col-header">
     <span class="col-title">FullGridNet (network graph)</span>
     <span class="epoch-badge" id="fullNetEpochBadge">epoch 0</span>
-  </div>
+  </summary>
   <p class="col-desc">Every real neuron in the flat-matrix engine, one straight vertical line per layer, every real nonzero-weight edge between them &mdash; no per-cell selection needed. Shown regardless of which engine you picked above; the data is identical either way.</p>
   <div id="fullNetworkGraph"><div class="diagram-empty">Step the network at least once to see the graph.</div></div>
-</div>
+</details>
+
+<!-- ===== Reduced network (layer 3 eliminated) panel: start ===== -->
+<details class="full-network-panel" id="reducedNetworkPanel">
+  <summary class="col-header">
+    <span class="col-title">Reduced network (layer 3 eliminated)</span>
+    <span class="epoch-badge" id="reducedEpochBadge">epoch 0</span>
+  </summary>
+  <p class="col-desc">
+    Layer 2's four real threshold neurons (2.1&ndash;2.4) are untouched, but layer 3's three combining
+    neurons are replaced with a single neuron wired directly to layer 2 &mdash; weights (1, 1, &minus;2, &minus;1),
+    bias &minus;1. This is a lossless simplification, not an approximation: verified against all 512 possible
+    3&times;3 patches to match the original network exactly. It's computed by <code>reduced_network.py</code>'s
+    own <code>ReducedConwayNet</code>, the same real Python computation the rest of this page uses &mdash; not a
+    re-derivation &mdash; and it steps alongside the main network above, so any mismatch would show up here.
+  </p>
+  <div class="grid-wrap"><div class="cellgrid" id="reducedGrid"></div></div>
+  <div class="status" id="reducedStatus"></div>
+  <div class="full-grid-block">
+    <div class="label">Every real neuron in the reduced network, whole grid at once &mdash; same layout convention as FullGridNet above, just one fewer column.</div>
+    <div id="reducedGraph"><div class="diagram-empty">Step the network at least once to see the graph.</div></div>
+  </div>
+  <div class="matrix-block">
+    <div class="label">The reduced network's real weights (layer 2 is identical to the original above; one neuron replaces layer 3 + output)</div>
+    <div id="reducedMatrices"></div>
+  </div>
+</details>
+<!-- ===== Reduced network (layer 3 eliminated) panel: end ===== -->
 
 <script>
 const MIN_DIM = 3, MAX_DIM = 10;
@@ -393,6 +477,31 @@ async function nnStep(grid, epochs) {
 function getEpochsN() {
   return clamp(parseInt(document.getElementById('epochsInput').value, 10) || 1, 1, 1000);
 }
+
+// ===== Reduced network (layer 3 eliminated): start =====
+// Same idea as nnStep() above -- calls the real Python computation
+// (reduced_network.py's ReducedConwayNet) instead of a JS re-implementation.
+async function nnReducedStep(grid, epochs) {
+  const res = await fetch('/api/reduced-step', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ grid, epochs: epochs || 1 }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `server error (${res.status})`);
+  return { layer2: data.layer2, output: data.output, priorGrid: data.priorGrid, epochs: data.epochs };
+}
+
+let reducedSpec = null;
+async function loadReducedNetworkSpec() {
+  try {
+    const res = await fetch('/api/reduced-network');
+    reducedSpec = await res.json();
+  } catch (e) {
+    reducedSpec = null;
+  }
+}
+// ===== Reduced network (layer 3 eliminated): end =====
 
 // The network's real weights/biases (network.py's describe_network()),
 // fetched once so the diagram draws the actual graph, not a guessed one.
@@ -434,6 +543,7 @@ let golState = null, golEpoch = 0;
 let lastNnInternals = null;
 let lastNnInput = null;
 let selectedCell = null; // { i, j } into the nn output grid
+let lastReducedOutput = null, lastReducedInternals = null, lastReducedInput = null, reducedEpoch = 0; // reduced network (layer 3 eliminated)
 
 // --- Rendering ---
 function renderCellGrid(container, grid, opts) {
@@ -555,6 +665,8 @@ function renderInspector() {
 
   renderNetworkDiagram(i, j);
   renderMatrixView(i, j);
+  renderReducedCellDiagram(i, j);
+  renderReducedCellMatrixView(i, j);
 }
 
 // --- Network diagram: draws the actual weighted graph (from networkSpec,
@@ -759,6 +871,496 @@ function renderMatrixView(i, j) {
   `;
 }
 
+// ===== Reduced network (layer 3 eliminated): start =====
+// Dedicated tiny grid renderer (rather than reusing renderCellGrid's
+// highlightPred, which paints an amber OUTLINE already meaning "patch
+// region" elsewhere on this page) so a mismatch is an unambiguous filled
+// amber cell -- and so nothing about the existing renderCellGrid changes.
+function renderReducedGrid(container, predicted, truth) {
+  const rows = predicted.length, cols = predicted[0].length;
+  container.style.gridTemplateColumns = `repeat(${cols}, 26px)`;
+  container.innerHTML = '';
+  let mismatches = 0;
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      const wrong = predicted[i][j] !== truth[i][j];
+      if (wrong) mismatches++;
+      const cell = document.createElement('div');
+      cell.className = 'cell' + (predicted[i][j] ? ' alive' : '') + (wrong ? ' mismatch' : '');
+      container.appendChild(cell);
+    }
+  }
+  return mismatches;
+}
+
+function renderReducedNetwork() {
+  document.getElementById('reducedEpochBadge').textContent = `epoch ${reducedEpoch}`;
+  const gridEl = document.getElementById('reducedGrid');
+  const statusEl = document.getElementById('reducedStatus');
+  const matrixEl = document.getElementById('reducedMatrices');
+
+  if (!nnState || !lastReducedOutput) {
+    gridEl.innerHTML = '';
+    statusEl.textContent = nnState ? '' : 'Press "Start / Reset Simulations" and step to compare.';
+    statusEl.style.color = '';
+  } else {
+    const rows = lastReducedOutput.length, cols = lastReducedOutput[0].length;
+    const mismatches = renderReducedGrid(gridEl, lastReducedOutput, nnState);
+    statusEl.textContent = mismatches === 0
+      ? `Matches the original network exactly — 0 mismatches out of ${rows * cols} cells.`
+      : `${mismatches} of ${rows * cols} cells differ from the original network.`;
+    statusEl.style.color = mismatches === 0 ? 'var(--alive)' : 'var(--warn)';
+  }
+
+  if (!reducedSpec) {
+    matrixEl.innerHTML = '<div class="diagram-empty">Loading network weights&hellip;</div>';
+    return;
+  }
+  const w1Rows = [reducedSpec.layer2.n1.weights, reducedSpec.layer2.n2.weights, reducedSpec.layer2.n3.weights, reducedSpec.layer2.n4.weights];
+  const w1Bias = [reducedSpec.layer2.n1.bias, reducedSpec.layer2.n2.bias, reducedSpec.layer2.n3.bias, reducedSpec.layer2.n4.bias];
+  const w2Rows = [reducedSpec.output.weights];
+  const w2Bias = [reducedSpec.output.bias];
+  const offsetLabels = [];
+  for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) offsetLabels.push(`(${di},${dj})`);
+
+  function matrixTable(title, rowLabels, colLabels, weightRows, biases) {
+    let html = `<div class="matrix-title">${title}</div><div class="matrix-table-wrap"><table class="matrix"><thead><tr><th></th>`;
+    colLabels.forEach(c => { html += `<th>${c}</th>`; });
+    html += `<th class="bias-col">bias</th></tr></thead><tbody>`;
+    rowLabels.forEach((r, idx) => {
+      html += `<tr><th class="row-label">${r}</th>`;
+      weightRows[idx].forEach(w => {
+        const cls = w > 0 ? 'pos' : (w < 0 ? 'neg' : '');
+        html += `<td class="${cls}">${w}</td>`;
+      });
+      html += `<td class="bias-col">${biases[idx]}</td></tr>`;
+    });
+    html += `</tbody></table></div>`;
+    return html;
+  }
+
+  matrixEl.innerHTML = `
+    <div class="matrix-row">${matrixTable('W1 &mdash; input (9) &rarr; layer 2 (4)', ['2.1', '2.2', '2.3', '2.4'], offsetLabels, w1Rows, w1Bias)}</div>
+    <div class="matrix-row">${matrixTable('W2 &mdash; layer 2 (4) &rarr; output (1), no layer 3', ['output'], ['2.1', '2.2', '2.3', '2.4'], w2Rows, w2Bias)}</div>
+  `;
+
+  renderReducedGraph();
+}
+
+// The reduced network as a literal node/edge graph, whole grid at once --
+// same layout convention as renderFullNetworkGraph() above (one straight
+// vertical line per layer, real nonzero-weight edges, click-to-trace), just
+// one fewer column since there's no layer 3: input -> layer 2 -> output.
+function renderReducedGraph() {
+  const container = document.getElementById('reducedGraph');
+  if (!reducedSpec || !nnState || !lastReducedInternals || !lastReducedInput) {
+    container.innerHTML = '<div class="diagram-empty">Step the network at least once to see the graph.</div>';
+    return;
+  }
+
+  const rows = lastReducedInput.length, cols = lastReducedInput[0].length;
+  const n = rows * cols;
+  const S = 24, R = 7, BAND_GAP = 40;
+  const panelWidth = (container.parentElement ? container.parentElement.clientWidth : 1200) - 32;
+  const COL_GAP = Math.max(220, (panelWidth - 50 - 160) / 2);
+  const TOP = 56;
+
+  function verticalLine(x, startY, count) {
+    const pos = [];
+    for (let p = 0; p < count; p++) pos.push({ x, y: startY + p * S });
+    return { pos, endY: startY + count * S };
+  }
+  function columnHeight(groupCount) {
+    return groupCount * n * S + (groupCount - 1) * BAND_GAP;
+  }
+  const maxContentHeight = Math.max(columnHeight(1), columnHeight(4), columnHeight(1));
+
+  function layerColumn(x, subLabels) {
+    const contentHeight = columnHeight(subLabels.length);
+    let y = TOP + 20 + (maxContentHeight - contentHeight) / 2;
+    const groups = [];
+    const labelYs = [];
+    subLabels.forEach(() => {
+      labelYs.push(y - 10);
+      const { pos, endY } = verticalLine(x, y, n);
+      groups.push(pos);
+      y = endY + BAND_GAP;
+    });
+    return { groups, labelYs, endY: y - BAND_GAP };
+  }
+
+  const X1 = 50, X2 = X1 + COL_GAP, X3 = X2 + COL_GAP;
+  const L1 = layerColumn(X1, ['input']);
+  const L2 = layerColumn(X2, ['2.1', '2.2', '2.3', '2.4']);
+  const L3 = layerColumn(X3, ['output']);
+
+  const toIJ = p => [Math.floor(p / cols), p % cols];
+  const keyL1 = p => `rl1:${p}`;
+  const keyL2 = (k, p) => `rl2:${k}:${p}`;
+  const keyL3 = p => `rl3:${p}`;
+
+  const l2Values = [lastReducedInternals.layer2.n1, lastReducedInternals.layer2.n2, lastReducedInternals.layer2.n3, lastReducedInternals.layer2.n4];
+  const l2Specs = [reducedSpec.layer2.n1, reducedSpec.layer2.n2, reducedSpec.layer2.n3, reducedSpec.layer2.n4];
+  const outSpec = reducedSpec.output;
+  const NEIGHBOR_OFFSETS = [];
+  for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) NEIGHBOR_OFFSETS.push([di, dj]);
+
+  let edges = '';
+  for (let k = 0; k < 4; k++) {
+    const w = l2Specs[k].weights;
+    for (let p = 0; p < n; p++) {
+      const [i, j] = toIJ(p);
+      const target = L2.groups[k][p];
+      NEIGHBOR_OFFSETS.forEach(([di, dj], idx) => {
+        if (w[idx] === 0) return;
+        const ni = i + di, nj = j + dj;
+        if (ni < 0 || ni >= rows || nj < 0 || nj >= cols) return;
+        const srcP = ni * cols + nj;
+        edges += edgeLine(L1.groups[0][srcP].x, L1.groups[0][srcP].y, target.x, target.y, w[idx], lastReducedInput[ni][nj] === 1,
+          { cls: 'graph-edge', src: keyL1(srcP), dst: keyL2(k, p) });
+      });
+    }
+  }
+  for (let p = 0; p < n; p++) {
+    const [i, j] = toIJ(p);
+    const target = L3.groups[0][p];
+    outSpec.weights.forEach((wv, srcIdx) => {
+      if (wv === 0) return;
+      const src = L2.groups[srcIdx][p];
+      edges += edgeLine(src.x, src.y, target.x, target.y, wv, l2Values[srcIdx][i][j] === 1,
+        { cls: 'graph-edge', src: keyL2(srcIdx, p), dst: keyL3(p) });
+    });
+  }
+
+  let nodes = '';
+  for (let p = 0; p < n; p++) {
+    const [i, j] = toIJ(p);
+    nodes += nodeCircle(L1.groups[0][p].x, L1.groups[0][p].y, R, lastReducedInput[i][j] === 1, `input (${i},${j})`,
+      { cls: 'graph-node', key: keyL1(p) });
+  }
+  const l2Labels = ['2.1', '2.2', '2.3', '2.4'];
+  for (let k = 0; k < 4; k++) {
+    for (let p = 0; p < n; p++) {
+      const [i, j] = toIJ(p);
+      nodes += nodeCircle(L2.groups[k][p].x, L2.groups[k][p].y, R, l2Values[k][i][j] === 1, `${l2Labels[k]} (${i},${j})`,
+        { cls: 'graph-node', key: keyL2(k, p) });
+    }
+  }
+  for (let p = 0; p < n; p++) {
+    const [i, j] = toIJ(p);
+    nodes += nodeCircle(L3.groups[0][p].x, L3.groups[0][p].y, R, lastReducedOutput[i][j] === 1, `output (${i},${j})`,
+      { cls: 'graph-node', key: keyL3(p) });
+  }
+
+  let headers = textLabel(X1, 20, `Layer 1 &mdash; input (${n})`, 12, 'middle')
+    + textLabel(X2, 20, `Layer 2 (${n * 4})`, 12, 'middle')
+    + textLabel(X3, 20, `Output (${n})`, 12, 'middle');
+
+  let subLabels = '';
+  L2.labelYs.forEach((y, k) => { subLabels += textLabel(X2 + 14, y, l2Labels[k], 10, 'start'); });
+
+  const totalWidth = X3 + 160;
+  const totalHeight = TOP + 20 + maxContentHeight + 30;
+  const edgeCount = 4 * 8 * n + 4 * n; // upper bound, boundary-reduced in practice
+
+  container.innerHTML = `
+    <div style="overflow-x:auto; border: 1px solid var(--border); border-radius: 6px;">
+      <svg viewBox="0 0 ${totalWidth} ${totalHeight}" width="${totalWidth}" height="${totalHeight}">
+        ${headers}
+        ${subLabels}
+        ${edges}
+        ${nodes}
+      </svg>
+    </div>
+    <div class="diagram-legend">
+      <span><span class="legend-line" style="background:var(--alive)"></span>positive weight</span>
+      <span><span class="legend-line" style="background:var(--warn)"></span>negative weight</span>
+      <span>${n} neurons in layers 1 &amp; output, ${n * 4} in layer 2 &mdash; up to ~${edgeCount} edges, no layer 3</span>
+      <span>click a neuron to trace its full ancestor/descendant chain (ctrl/cmd+click to select more than one)</span>
+    </div>
+  `;
+
+  wireReducedGraphHover(container, { rows, cols, n, toIJ, l2Specs, outSpec, NEIGHBOR_OFFSETS, keyL1, keyL2, keyL3 });
+}
+
+// Same click-to-trace mechanism as wireGraphHover() above, just over the
+// shorter input -> layer2 -> output chain (no layer 3 hop in the middle).
+function wireReducedGraphHover(container, ctx) {
+  const svgEl = container.querySelector('svg');
+  if (!svgEl) return;
+  const { rows, cols, toIJ, l2Specs, outSpec, NEIGHBOR_OFFSETS, keyL1, keyL2, keyL3 } = ctx;
+
+  const nodeByKey = new Map();
+  svgEl.querySelectorAll('.graph-node').forEach(el => nodeByKey.set(el.dataset.key, el));
+  const edgesBySrc = new Map();
+  svgEl.querySelectorAll('.graph-edge').forEach(el => {
+    const src = el.dataset.src;
+    if (!edgesBySrc.has(src)) edgesBySrc.set(src, []);
+    edgesBySrc.get(src).push(el);
+  });
+
+  function ancestorsOfL2(k, p) {
+    const [i, j] = toIJ(p);
+    const w = l2Specs[k].weights;
+    const out = [];
+    NEIGHBOR_OFFSETS.forEach(([di, dj], idx) => {
+      if (w[idx] === 0) return;
+      const ni = i + di, nj = j + dj;
+      if (ni < 0 || ni >= rows || nj < 0 || nj >= cols) return;
+      out.push(ni * cols + nj);
+    });
+    return out;
+  }
+
+  function computeTrace(key) {
+    const [layer, a, b] = key.split(':');
+    const l1 = new Set(), l2 = new Set(), l3 = new Set();
+
+    if (layer === 'rl1') {
+      const p = parseInt(a, 10);
+      l1.add(keyL1(p));
+      const [pi, pj] = toIJ(p);
+      for (let k = 0; k < 4; k++) {
+        const w = l2Specs[k].weights;
+        NEIGHBOR_OFFSETS.forEach(([di, dj], idx) => {
+          if (w[idx] === 0) return;
+          const qi = pi - di, qj = pj - dj;
+          if (qi < 0 || qi >= rows || qj < 0 || qj >= cols) return;
+          const q = qi * cols + qj;
+          l2.add(keyL2(k, q));
+          if (outSpec.weights[k] !== 0) l3.add(keyL3(q));
+        });
+      }
+    } else if (layer === 'rl2') {
+      const k = parseInt(a, 10), p = parseInt(b, 10);
+      l2.add(keyL2(k, p));
+      ancestorsOfL2(k, p).forEach(sp => l1.add(keyL1(sp)));
+      if (outSpec.weights[k] !== 0) l3.add(keyL3(p));
+    } else if (layer === 'rl3') {
+      const p = parseInt(a, 10);
+      l3.add(keyL3(p));
+      outSpec.weights.forEach((wv, k) => {
+        if (wv === 0) return;
+        l2.add(keyL2(k, p));
+        ancestorsOfL2(k, p).forEach(sp => l1.add(keyL1(sp)));
+      });
+    }
+    return { l1, l2, l3 };
+  }
+
+  let highlighted = [];
+
+  function clearHighlight() {
+    highlighted.forEach(el => el.classList.remove('graph-highlight', 'graph-origin'));
+    highlighted = [];
+    svgEl.classList.remove('tracing');
+  }
+
+  function highlightEdgesFrom(srcKey, nextSet) {
+    const list = edgesBySrc.get(srcKey);
+    if (!list) return;
+    list.forEach(el => {
+      if (!el.classList.contains('graph-highlight') && nextSet.has(el.dataset.dst)) {
+        el.classList.add('graph-highlight');
+        highlighted.push(el);
+      }
+    });
+  }
+
+  function applyHighlightForKey(key) {
+    const trace = computeTrace(key);
+    [...trace.l1, ...trace.l2, ...trace.l3].forEach(k => {
+      const el = nodeByKey.get(k);
+      if (el && !el.classList.contains('graph-highlight')) {
+        el.classList.add('graph-highlight');
+        highlighted.push(el);
+      }
+    });
+    trace.l1.forEach(k => highlightEdgesFrom(k, trace.l2));
+    trace.l2.forEach(k => highlightEdgesFrom(k, trace.l3));
+    const origin = nodeByKey.get(key);
+    if (origin) origin.classList.add('graph-origin');
+  }
+
+  function recomputeHighlight() {
+    clearHighlight();
+    if (selectedKeys.size === 0) return;
+    selectedKeys.forEach(applyHighlightForKey);
+    svgEl.classList.add('tracing');
+  }
+
+  let selectedKeys = new Set();
+  svgEl.addEventListener('click', (e) => {
+    const target = e.target.closest ? e.target.closest('.graph-node') : null;
+    const multi = e.ctrlKey || e.metaKey;
+    if (!target) {
+      if (!multi) { selectedKeys.clear(); recomputeHighlight(); }
+      return;
+    }
+    const key = target.dataset.key;
+    if (multi) {
+      if (selectedKeys.has(key)) selectedKeys.delete(key);
+      else selectedKeys.add(key);
+    } else if (selectedKeys.size === 1 && selectedKeys.has(key)) {
+      selectedKeys.clear();
+    } else {
+      selectedKeys = new Set([key]);
+    }
+    recomputeHighlight();
+  });
+}
+
+// Same idea as buildDiagramBlock()/renderNetworkDiagram() above, for the
+// SAME selected cell, but stopping at layer 2 -> one combined output
+// neuron (no layer 3 column).
+function buildReducedDiagramBlock(originX, step, i, j) {
+  const rows = step.input.length, cols = step.input[0].length;
+  const patch = [], patchInBounds = [];
+  for (let di = -1; di <= 1; di++) {
+    for (let dj = -1; dj <= 1; dj++) {
+      const ni = i + di, nj = j + dj;
+      const inb = ni >= 0 && ni < rows && nj >= 0 && nj < cols;
+      patch.push(inb ? step.input[ni][nj] : 0);
+      patchInBounds.push(inb);
+    }
+  }
+
+  const l2 = [step.layer2.n1[i][j], step.layer2.n2[i][j], step.layer2.n3[i][j], step.layer2.n4[i][j]];
+  const out = step.output[i][j];
+
+  const inputPos = [];
+  for (let di = -1; di <= 1; di++)
+    for (let dj = -1; dj <= 1; dj++)
+      inputPos.push({ x: originX + 40 + (dj + 1) * 34, y: 72 + (di + 1) * 34 });
+
+  const l2Pos = [0, 1, 2, 3].map(k => ({ x: originX + 250, y: 40 + k * 44 }));
+  const outPos = { x: originX + 410, y: 106 };
+
+  const l2Labels = ['2.1', '2.2', '2.3', '2.4'];
+  const l2Titles = ['2.1: fires if >=2 neighbors', '2.2: fires if >=3 neighbors', '2.3: fires if >=4 neighbors', '2.4: fires if center is off'];
+
+  const l2Specs = [reducedSpec.layer2.n1, reducedSpec.layer2.n2, reducedSpec.layer2.n3, reducedSpec.layer2.n4];
+  const outSpec = reducedSpec.output;
+
+  let edges = '';
+  l2Pos.forEach((p2, k) => {
+    const w = l2Specs[k].weights;
+    inputPos.forEach((p1, idx) => { edges += edgeLine(p1.x, p1.y, p2.x, p2.y, w[idx], patch[idx] === 1); });
+  });
+  l2Pos.forEach((p2, idx) => { edges += edgeLine(p2.x, p2.y, outPos.x, outPos.y, outSpec.weights[idx], l2[idx] === 1); });
+
+  let nodes = '';
+  inputPos.forEach((p, idx) => {
+    nodes += nodeCircle(p.x, p.y, 9, patch[idx] === 1, 'input pixel', { center: idx === 4, offgrid: !patchInBounds[idx] });
+  });
+  l2Pos.forEach((p, k) => {
+    nodes += nodeCircle(p.x, p.y, 11, l2[k] === 1, l2Titles[k]);
+    nodes += textLabel(p.x + 17, p.y + 4, l2Labels[k]);
+  });
+  nodes += nodeCircle(outPos.x, outPos.y, 12, out === 1, 'output: 1*2.1 + 1*2.2 - 2*2.3 - 1*2.4 - 1 >= 0');
+  nodes += textLabel(outPos.x + 18, outPos.y + 4, 'output');
+
+  const headers = textLabel(originX + 74, 20, 'input patch', 10, 'middle')
+    + textLabel(originX + 250, 20, 'layer 2', 10, 'middle')
+    + textLabel(originX + 410, 20, 'output', 10, 'middle');
+
+  return { edges, nodes, headers };
+}
+
+function renderReducedCellDiagram(i, j) {
+  const container = document.getElementById('reducedCellDiagram');
+  if (!reducedSpec) {
+    container.innerHTML = '<div class="diagram-empty">Loading network weights&hellip;</div>';
+    return;
+  }
+  if (!lastReducedInternals || !lastReducedInput || !lastReducedOutput) {
+    container.innerHTML = '<div class="diagram-empty">Step the network at least once to see this.</div>';
+    return;
+  }
+  const step = { input: lastReducedInput, layer2: lastReducedInternals.layer2, output: lastReducedOutput };
+  const block = buildReducedDiagramBlock(0, step, i, j);
+  container.innerHTML = `
+    <svg viewBox="0 0 470 200" width="100%" style="max-width:480px; height:auto;">
+      ${block.headers}
+      ${block.edges}
+      ${block.nodes}
+    </svg>
+    <div class="diagram-legend">
+      <span><span class="legend-line" style="background:var(--alive)"></span>positive weight</span>
+      <span><span class="legend-line" style="background:var(--warn)"></span>negative weight</span>
+    </div>
+  `;
+}
+
+// Same idea as renderMatrixView() above, for the SAME selected cell, with
+// the reduced network's W1/W2 tables instead of W1/W2/W3.
+function renderReducedCellMatrixView(i, j) {
+  const block = document.getElementById('reducedCellMatrixBlock');
+  if (!document.getElementById('showMatrices').checked) {
+    block.style.display = 'none';
+    return;
+  }
+  block.style.display = 'block';
+  const container = document.getElementById('reducedCellMatrixView');
+  if (!reducedSpec) {
+    container.innerHTML = '<div class="diagram-empty">Loading network weights&hellip;</div>';
+    return;
+  }
+  if (!lastReducedInternals || !lastReducedInput || !lastReducedOutput) {
+    container.innerHTML = '<div class="diagram-empty">Step the network at least once to see this.</div>';
+    return;
+  }
+
+  const rows = lastReducedInput.length, cols = lastReducedInput[0].length;
+  const patch = [];
+  const offsetLabels = [];
+  for (let di = -1; di <= 1; di++) {
+    for (let dj = -1; dj <= 1; dj++) {
+      const ni = i + di, nj = j + dj;
+      const inb = ni >= 0 && ni < rows && nj >= 0 && nj < cols;
+      patch.push(inb ? lastReducedInput[ni][nj] : 0);
+      offsetLabels.push(`(${di},${dj})`);
+    }
+  }
+
+  const l2 = [
+    lastReducedInternals.layer2.n1[i][j],
+    lastReducedInternals.layer2.n2[i][j],
+    lastReducedInternals.layer2.n3[i][j],
+    lastReducedInternals.layer2.n4[i][j],
+  ];
+  const out = lastReducedOutput[i][j];
+
+  function matrixTable(title, rowLabels, colLabels, weightRows, biases, activeFlags) {
+    let html = `<div class="matrix-title">${title}</div><div class="matrix-table-wrap"><table class="matrix"><thead><tr><th></th>`;
+    colLabels.forEach(c => { html += `<th>${c}</th>`; });
+    html += `<th class="bias-col">bias</th></tr></thead><tbody>`;
+    rowLabels.forEach((r, idx) => {
+      const active = activeFlags[idx] === 1;
+      html += `<tr class="${active ? 'row-active' : ''}"><th class="row-label">${r}</th>`;
+      weightRows[idx].forEach(w => {
+        const cls = w > 0 ? 'pos' : (w < 0 ? 'neg' : '');
+        html += `<td class="${cls}">${w}</td>`;
+      });
+      html += `<td class="bias-col">${biases[idx]}</td></tr>`;
+    });
+    html += `</tbody></table></div>`;
+    return html;
+  }
+
+  const w1Rows = [reducedSpec.layer2.n1.weights, reducedSpec.layer2.n2.weights, reducedSpec.layer2.n3.weights, reducedSpec.layer2.n4.weights];
+  const w1Bias = [reducedSpec.layer2.n1.bias, reducedSpec.layer2.n2.bias, reducedSpec.layer2.n3.bias, reducedSpec.layer2.n4.bias];
+  const w2Rows = [reducedSpec.output.weights];
+  const w2Bias = [reducedSpec.output.bias];
+
+  container.innerHTML = `
+    <div class="matrix-vector"><strong>x</strong> for (row ${i}, col ${j}) = [${patch.join(', ')}] &mdash; same patch as above</div>
+    <div class="matrix-row">${matrixTable('W1 &mdash; input (9) &rarr; layer 2 (4)', ['2.1', '2.2', '2.3', '2.4'], offsetLabels, w1Rows, w1Bias, l2)}</div>
+    <div class="matrix-row">${matrixTable('W2 &mdash; layer 2 (4) &rarr; output (1), no layer 3', ['output'], ['2.1', '2.2', '2.3', '2.4'], w2Rows, w2Bias, [out])}</div>
+  `;
+}
+// ===== Reduced network (layer 3 eliminated): end =====
+
 function renderSeed() {
   document.getElementById('seedDims').textContent = `${seed.length} x ${seed[0].length}`;
   renderCellGrid(document.getElementById('seedGrid'), seed, { editable: true });
@@ -776,6 +1378,7 @@ function renderNN() {
     document.getElementById('internals').style.display = 'none';
     renderInspector();
     renderFullNetworkGraph();
+    renderReducedNetwork();
     return;
   }
   renderCellGrid(document.getElementById('nnGrid'), nnState, { onClick: selectNnCell, selected: selectedCell });
@@ -804,6 +1407,7 @@ function renderNN() {
 
   renderInspector();
   renderFullNetworkGraph();
+  renderReducedNetwork();
 }
 
 // The FullGridNet as a literal node/edge graph: every real neuron in every
@@ -1170,6 +1774,7 @@ document.getElementById('resizeBtn').addEventListener('click', () => {
   renderSeed();
   nnState = null; golState = null; nnEpoch = 0; golEpoch = 0;
   lastNnInternals = null; lastNnInput = null; selectedCell = null;
+  lastReducedOutput = null; lastReducedInternals = null; lastReducedInput = null; reducedEpoch = 0;
   renderNN(); renderGol();
 });
 
@@ -1190,6 +1795,7 @@ document.getElementById('startBtn').addEventListener('click', () => {
   golState = cloneGrid(seed);
   nnEpoch = 0; golEpoch = 0;
   lastNnInternals = null; lastNnInput = null; selectedCell = null;
+  lastReducedOutput = null; lastReducedInternals = null; lastReducedInput = null; reducedEpoch = 0;
   renderNN(); renderGol();
 });
 
@@ -1200,6 +1806,7 @@ document.getElementById('stepBtn').addEventListener('click', async () => {
   const statusEl = document.getElementById('nnStatus');
   stepBtn.disabled = true;
   try {
+    const inputGrid = nnState; // same starting grid fed to the reduced network below, so both stay in lockstep
     const result = await nnStep(nnState, n);
     nnState = result.output;
     lastNnInternals = result;
@@ -1207,6 +1814,13 @@ document.getElementById('stepBtn').addEventListener('click', async () => {
     nnEpoch += n;
     for (let k = 0; k < n; k++) golState = golStep(golState);
     golEpoch += n;
+
+    const reducedResult = await nnReducedStep(inputGrid, n);
+    lastReducedOutput = reducedResult.output;
+    lastReducedInternals = reducedResult;
+    lastReducedInput = reducedResult.priorGrid;
+    reducedEpoch = nnEpoch;
+
     renderNN();
     renderGol();
   } catch (err) {
@@ -1226,6 +1840,7 @@ renderSeed();
 renderNN();
 renderGol();
 loadNetworkSpec().then(renderInspector);
+loadReducedNetworkSpec().then(renderReducedNetwork);
 </script>
 
 </body>

@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Reduced Network &mdash; Randomized Trials</title>
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #1c1f26;
+    --border: #2c313c;
+    --text: #e6e8ec;
+    --muted: #8b93a3;
+    --alive: #4fd67a;
+    --dead: #23262d;
+    --accent: #5b8cff;
+    --accent-hover: #7aa0ff;
+    --warn: #ff6b6b;
+    --zero: #f2a93b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 20px;
+  }
+  .panel-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
+  .panel-desc { font-size: 12px; color: var(--muted); margin: 0 0 12px; }
+
+  .controls-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px 20px;
+  }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; }
+  .field label .val { color: var(--text); font-weight: 600; }
+  .field input[type=range] { width: 100%; accent-color: var(--accent); }
+
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; align-items: center; }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 13px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  button:hover { background: var(--accent-hover); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .stats-row { display: flex; gap: 24px; flex-wrap: wrap; margin-top: 14px; }
+  .stat { display: flex; flex-direction: column; gap: 2px; }
+  .stat .label { font-size: 11px; color: var(--muted); }
+  .stat .value { font-size: 20px; font-weight: 700; }
+  .stat .value.pass { color: var(--alive); }
+  .stat .value.fail { color: var(--warn); }
+
+  .board { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 900px) { .board { grid-template-columns: 1fr; } }
+
+  .grid-compare { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-top: 10px; }
+  .grid-block { text-align: center; }
+  .grid-block .sublabel { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .cellgrid { display: grid; gap: 2px; background: var(--border); padding: 2px; border-radius: 4px; }
+  .cell { width: 14px; height: 14px; background: var(--dead); border-radius: 2px; }
+  .cell.alive { background: var(--alive); }
+  .cell.mismatch { background: var(--warn); }
+
+  .matrix-title { font-size: 11px; color: var(--muted); margin-bottom: 5px; margin-top: 14px; }
+  .matrix-title:first-child { margin-top: 0; }
+  .matrix-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; }
+  .matrix-table { border-collapse: collapse; font-size: 11px; font-family: ui-monospace, "SF Mono", Menlo, monospace; white-space: nowrap; }
+  .matrix-table th, .matrix-table td { padding: 4px 7px; text-align: right; border-bottom: 1px solid var(--border); }
+  .matrix-table thead th { color: var(--muted); font-weight: 500; }
+  .matrix-table tbody th { color: var(--muted); font-weight: 500; text-align: left; background: var(--bg); }
+  .matrix-table td.pos { color: var(--alive); }
+  .matrix-table td.neg { color: var(--warn); }
+  .matrix-table td.bias-col, .matrix-table th.bias-col { border-left: 1px solid var(--border); color: var(--text); }
+
+  .log { max-height: 220px; overflow-y: auto; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; margin-top: 10px; }
+  .log-empty { color: var(--muted); }
+  .log-line { color: var(--warn); padding: 4px 0; border-bottom: 1px solid var(--border); }
+  .diagram-empty { font-size: 12px; color: var(--muted); text-align: center; padding: 20px; }
+</style>
+</head>
+<body>
+
+<h1>Reduced Network &mdash; Randomized Trials</h1>
+<p class="subtitle">Stress-tests the layer-3-eliminated network from <code>reduced_network.py</code> against the original <code>network.py</code> network, both computed live by the real Python backend (<code>server.py</code>) &mdash; not a JS re-implementation of either. Each trial generates a random grid and epoch count and compares the two networks' outputs cell by cell.</p>
+
+<div class="panel">
+  <div class="panel-title">Configuration</div>
+  <div class="controls-grid">
+    <div class="field"><label>Number of trials <span class="val" id="trialsVal">200</span></label><input type="range" id="trialCount" min="10" max="2000" step="10" value="200"></div>
+    <div class="field"><label>Min grid size <span class="val" id="minDimVal">3</span></label><input type="range" id="minDim" min="3" max="10" value="3"></div>
+    <div class="field"><label>Max grid size <span class="val" id="maxDimVal">10</span></label><input type="range" id="maxDim" min="3" max="10" value="10"></div>
+    <div class="field"><label>Max epochs per trial <span class="val" id="maxEpochsVal">3</span></label><input type="range" id="maxEpochs" min="1" max="10" value="3"></div>
+    <div class="field"><label>Alive density <span class="val" id="densityVal">40%</span></label><input type="range" id="density" min="5" max="95" value="40"></div>
+  </div>
+  <div class="btn-row">
+    <button id="runBtn">Run Trials</button>
+  </div>
+  <div class="stats-row">
+    <div class="stat"><span class="label">Trials run</span><span class="value" id="trialsStat">&mdash;</span></div>
+    <div class="stat"><span class="label">Cells compared</span><span class="value" id="cellsStat">&mdash;</span></div>
+    <div class="stat"><span class="label">Mismatches</span><span class="value" id="mismatchStat">&mdash;</span></div>
+    <div class="stat"><span class="label">Result</span><span class="value" id="resultStat">&mdash;</span></div>
+  </div>
+</div>
+
+<div class="board">
+  <div class="panel">
+    <div class="panel-title">Reduced network's real weights</div>
+    <p class="panel-desc">Layer 2 (unchanged from the original network) feeding directly into one combined output neuron &mdash; fetched from <code>/api/reduced-network</code>, the same live backend the trials call.</p>
+    <div id="reducedMatrices"><div class="diagram-empty">Loading&hellip;</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Most recent trial</div>
+    <p class="panel-desc" id="lastTrialDesc">Run trials to see an example.</p>
+    <div class="grid-compare" id="lastTrialGrids"></div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-title">Mismatch log</div>
+  <p class="panel-desc">Should stay empty &mdash; the reduction was verified exhaustively over all 512 possible 3&times;3 patches. Any entry here would mean the two networks actually disagree on some grid.</p>
+  <div class="log" id="mismatchLog"><div class="log-empty">No mismatches yet.</div></div>
+</div>
+
+<script>
+function makeGrid(rows, cols, fill) {
+  const g = [];
+  for (let i = 0; i < rows; i++) g.push(new Array(cols).fill(fill));
+  return g;
+}
+function randomGrid(rows, cols, p) {
+  const g = makeGrid(rows, cols, 0);
+  for (let i = 0; i < rows; i++) for (let j = 0; j < cols; j++) g[i][j] = Math.random() < p ? 1 : 0;
+  return g;
+}
+function randInt(lo, hi) { return lo + Math.floor(Math.random() * (hi - lo + 1)); }
+
+async function callStep(path, body) {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `server error (${res.status})`);
+  return data;
+}
+
+// ============================================================
+// Reduced network weight matrices (fetched from the live backend, same
+// route the index.html panel uses -- so this page has no second copy of
+// the weights either).
+// ============================================================
+function renderMatrixTable(weights, biases, colLabels, rowLabels, title) {
+  let html = `<div class="matrix-title">${title}</div><div class="matrix-scroll"><table class="matrix-table"><thead><tr><th></th>`;
+  colLabels.forEach(c => { html += `<th>${c}</th>`; });
+  html += `<th class="bias-col">bias</th></tr></thead><tbody>`;
+  rowLabels.forEach((r, idx) => {
+    html += `<tr><th>${r}</th>`;
+    weights[idx].forEach(w => {
+      html += `<td class="${w > 0 ? 'pos' : (w < 0 ? 'neg' : '')}">${w}</td>`;
+    });
+    html += `<td class="bias-col">${biases[idx]}</td></tr>`;
+  });
+  html += `</tbody></table></div>`;
+  return html;
+}
+
+async function loadMatrices() {
+  const container = document.getElementById('reducedMatrices');
+  try {
+    const res = await fetch('/api/reduced-network');
+    const spec = await res.json();
+    const offsetLabels = [];
+    for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) offsetLabels.push(`(${di},${dj})`);
+    const w1Rows = [spec.layer2.n1.weights, spec.layer2.n2.weights, spec.layer2.n3.weights, spec.layer2.n4.weights];
+    const w1Bias = [spec.layer2.n1.bias, spec.layer2.n2.bias, spec.layer2.n3.bias, spec.layer2.n4.bias];
+    const w2Rows = [spec.output.weights];
+    const w2Bias = [spec.output.bias];
+    container.innerHTML =
+      renderMatrixTable(w1Rows, w1Bias, offsetLabels, ['2.1', '2.2', '2.3', '2.4'], 'W1 &mdash; input (9) &rarr; layer 2 (4)') +
+      renderMatrixTable(w2Rows, w2Bias, ['2.1', '2.2', '2.3', '2.4'], ['output'], 'W2 &mdash; layer 2 (4) &rarr; output (1), no layer 3');
+  } catch (e) {
+    container.innerHTML = `<div class="diagram-empty">Could not reach the backend (${e.message}). Run "python3 server.py".</div>`;
+  }
+}
+
+// ============================================================
+// Trial runner
+// ============================================================
+function renderCellGrid(container, grid, mismatchGrid) {
+  const rows = grid.length, cols = grid[0].length;
+  container.style.gridTemplateColumns = `repeat(${cols}, 14px)`;
+  container.innerHTML = '';
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      const cell = document.createElement('div');
+      const wrong = mismatchGrid && mismatchGrid[i][j];
+      cell.className = 'cell' + (wrong ? ' mismatch' : (grid[i][j] ? ' alive' : ''));
+      container.appendChild(cell);
+    }
+  }
+}
+
+function renderLastTrial(inputGrid, origOutput, reducedOutput, mismatchGrid, rows, cols, epochs) {
+  document.getElementById('lastTrialDesc').textContent = `${rows}x${cols} grid, ${epochs} epoch${epochs > 1 ? 's' : ''}.`;
+  const container = document.getElementById('lastTrialGrids');
+  container.innerHTML = '';
+  const blocks = [
+    ['input', inputGrid, null],
+    ['original network', origOutput, null],
+    ['reduced network', reducedOutput, mismatchGrid],
+  ];
+  blocks.forEach(([label, grid, mismatch]) => {
+    const block = document.createElement('div');
+    block.className = 'grid-block';
+    const sub = document.createElement('div');
+    sub.className = 'sublabel';
+    sub.textContent = label;
+    block.appendChild(sub);
+    const gridEl = document.createElement('div');
+    gridEl.className = 'cellgrid';
+    block.appendChild(gridEl);
+    renderCellGrid(gridEl, grid, mismatch);
+    container.appendChild(block);
+  });
+}
+
+async function runTrials() {
+  const runBtn = document.getElementById('runBtn');
+  runBtn.disabled = true;
+
+  const trialCount = +document.getElementById('trialCount').value;
+  const minDim = +document.getElementById('minDim').value;
+  const maxDim = Math.max(minDim, +document.getElementById('maxDim').value);
+  const maxEpochs = +document.getElementById('maxEpochs').value;
+  const density = (+document.getElementById('density').value) / 100;
+
+  let trialsRun = 0, cellsCompared = 0, mismatchCount = 0;
+  const logEl = document.getElementById('mismatchLog');
+  logEl.innerHTML = '<div class="log-empty">No mismatches yet.</div>';
+
+  for (let t = 0; t < trialCount; t++) {
+    const rows = randInt(minDim, maxDim);
+    const cols = randInt(minDim, maxDim);
+    const epochs = randInt(1, maxEpochs);
+    const grid = randomGrid(rows, cols, density);
+
+    try {
+      const [orig, reduced] = await Promise.all([
+        callStep('/api/step', { grid, epochs, engine: 'cell' }),
+        callStep('/api/reduced-step', { grid, epochs }),
+      ]);
+
+      const mismatchGrid = makeGrid(rows, cols, 0);
+      let trialMismatches = 0;
+      for (let i = 0; i < rows; i++) {
+        for (let j = 0; j < cols; j++) {
+          cellsCompared++;
+          if (orig.output[i][j] !== reduced.output[i][j]) {
+            mismatchGrid[i][j] = 1;
+            trialMismatches++;
+          }
+        }
+      }
+      mismatchCount += trialMismatches;
+      trialsRun++;
+
+      if (trialMismatches > 0) {
+        if (logEl.querySelector('.log-empty')) logEl.innerHTML = '';
+        const line = document.createElement('div');
+        line.className = 'log-line';
+        line.textContent = `trial ${t}: ${rows}x${cols} grid, ${epochs} epochs -- ${trialMismatches} mismatched cell(s)`;
+        logEl.appendChild(line);
+      }
+
+      if (t === trialCount - 1 || t % 20 === 0) {
+        renderLastTrial(grid, orig.output, reduced.output, mismatchGrid, rows, cols, epochs);
+        document.getElementById('trialsStat').textContent = trialsRun;
+        document.getElementById('cellsStat').textContent = cellsCompared;
+        document.getElementById('mismatchStat').textContent = mismatchCount;
+        const resultEl = document.getElementById('resultStat');
+        resultEl.textContent = mismatchCount === 0 ? 'PASS' : 'FAIL';
+        resultEl.className = 'value ' + (mismatchCount === 0 ? 'pass' : 'fail');
+        // yield to the browser so the UI updates mid-run instead of freezing until the end
+        await new Promise(r => setTimeout(r, 0));
+      }
+    } catch (err) {
+      document.getElementById('resultStat').textContent = 'ERROR';
+      document.getElementById('resultStat').className = 'value fail';
+      const line = document.createElement('div');
+      line.className = 'log-line';
+      line.textContent = `trial ${t}: request failed -- ${err.message}. Is "python3 server.py" running?`;
+      if (logEl.querySelector('.log-empty')) logEl.innerHTML = '';
+      logEl.appendChild(line);
+      break;
+    }
+  }
+
+  document.getElementById('trialsStat').textContent = trialsRun;
+  document.getElementById('cellsStat').textContent = cellsCompared;
+  document.getElementById('mismatchStat').textContent = mismatchCount;
+  const resultEl = document.getElementById('resultStat');
+  resultEl.textContent = mismatchCount === 0 ? 'PASS' : 'FAIL';
+  resultEl.className = 'value ' + (mismatchCount === 0 ? 'pass' : 'fail');
+
+  runBtn.disabled = false;
+}
+
+// ============================================================
+// Wiring
+// ============================================================
+['trialCount', 'minDim', 'maxDim', 'maxEpochs', 'density'].forEach(id => {
+  const el = document.getElementById(id);
+  const valMap = { trialCount: 'trialsVal', minDim: 'minDimVal', maxDim: 'maxDimVal', maxEpochs: 'maxEpochsVal', density: 'densityVal' };
+  el.addEventListener('input', () => {
+    document.getElementById(valMap[id]).textContent = id === 'density' ? el.value + '%' : el.value;
+  });
+});
+document.getElementById('runBtn').addEventListener('click', runTrials);
+
+loadMatrices();
+</script>
+
+</body>
+</html>
